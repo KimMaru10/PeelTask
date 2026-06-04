@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Settings, HelpCircle } from 'lucide-react'
-import { useAppContext } from '../App'
+import { useAppContext, type AssigneeMode } from '../App'
 
 const SYNC_MESSAGES = [
   '課題を更新しています...',
@@ -42,6 +42,7 @@ function Dashboard(): JSX.Element {
   const navigate = useNavigate()
   const focus = useFocus()
   const [tasks, setTasks] = useState<Task[]>([])
+  const [loadedMode, setLoadedMode] = useState<AssigneeMode | null>(null)
   const [spaces, setSpaces] = useState<Space[]>([])
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
@@ -63,9 +64,9 @@ function Dashboard(): JSX.Element {
 
   const backendUrl = window.api?.getBackendUrl?.() ?? 'http://localhost:8080'
 
-  const fetchTasks = async (mode?: string): Promise<void> => {
+  const fetchTasks = async (mode?: AssigneeMode): Promise<void> => {
+    const currentMode: AssigneeMode = mode ?? assigneeMode
     try {
-      const currentMode = mode ?? assigneeMode
       // personal モードでも親選択用に Backlog タスク全件を取得しておく。
       const modeParam =
         currentMode === 'all' || currentMode === 'personal'
@@ -81,6 +82,9 @@ function Dashboard(): JSX.Element {
     } catch (_err: unknown) {
       setTasks([])
       setError('タスクの取得に失敗しました。アプリを再起動してください。')
+    } finally {
+      // 取得完了をモードと一緒にマークし、UI 側で「いま見ている tasks がどのタブ由来か」を識別できるようにする。
+      setLoadedMode(currentMode)
     }
   }
 
@@ -238,6 +242,9 @@ function Dashboard(): JSX.Element {
         <div key={slideKey} className={slideDir === 'right' ? 'tab-slide-right' : 'tab-slide-left'}>
           <PersonalTasksView backlogTasks={tasks} spaces={spaces} />
         </div>
+      ) : loadedMode !== assigneeMode ? (
+        // 取得中の tasks がまだ前タブのものなので、見た目を出さずプレースホルダーで埋める。
+        <div className="py-12 text-center text-sm text-gray-400">読み込み中...</div>
       ) : spaces.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center max-w-lg mx-auto">
           <div className="w-20 h-20 bg-brand/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
