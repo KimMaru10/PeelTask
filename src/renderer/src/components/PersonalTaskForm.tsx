@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
-import type { PersonalTask, PersonalTaskInput, Task } from '../types/Task'
+import type { PersonalTask, PersonalTaskInput, Space, Task } from '../types/Task'
+import BacklogTaskPicker from './BacklogTaskPicker'
 
 interface PersonalTaskFormProps {
   open: boolean
   initial?: PersonalTask | null
   backlogTasks: Task[]
+  spaces: Space[]
   onClose: () => void
   onSubmit: (input: PersonalTaskInput) => Promise<boolean>
 }
@@ -24,6 +26,7 @@ export default function PersonalTaskForm({
   open,
   initial,
   backlogTasks,
+  spaces,
   onClose,
   onSubmit
 }: PersonalTaskFormProps): JSX.Element | null {
@@ -31,7 +34,7 @@ export default function PersonalTaskForm({
   const [description, setDescription] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [estimatedHours, setEstimatedHours] = useState('')
-  const [parentId, setParentId] = useState<string>('')
+  const [parentId, setParentId] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -43,7 +46,7 @@ export default function PersonalTaskForm({
     setEstimatedHours(
       initial?.estimatedHours && initial.estimatedHours > 0 ? String(initial.estimatedHours) : ''
     )
-    setParentId(initial?.parentBacklogTaskId ? String(initial.parentBacklogTaskId) : '')
+    setParentId(initial?.parentBacklogTaskId ?? null)
     setError(null)
   }, [open, initial])
 
@@ -68,7 +71,7 @@ export default function PersonalTaskForm({
       description: description.trim(),
       dueDate: dueDate || null,
       estimatedHours: estimatedHours === '' ? 0 : parsedHours,
-      parentBacklogTaskId: parentId === '' ? null : Number(parentId)
+      parentBacklogTaskId: parentId
     }
     const ok = await onSubmit(input)
     setSubmitting(false)
@@ -152,18 +155,12 @@ export default function PersonalTaskForm({
             <label className="mb-1 block text-xs font-medium text-gray-600">
               関連する Backlog 課題 (任意)
             </label>
-            <select
+            <BacklogTaskPicker
               value={parentId}
-              onChange={(e) => setParentId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-            >
-              <option value="">なし</option>
-              {backlogTasks.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.issueKey} - {t.title}
-                </option>
-              ))}
-            </select>
+              tasks={backlogTasks}
+              spaces={spaces}
+              onChange={setParentId}
+            />
           </div>
 
           {error && <p className="text-xs text-rose-600">{error}</p>}

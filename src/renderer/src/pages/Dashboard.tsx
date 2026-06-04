@@ -236,7 +236,7 @@ function Dashboard(): JSX.Element {
         </div>
       ) : assigneeMode === 'personal' ? (
         <div key={slideKey} className={slideDir === 'right' ? 'tab-slide-right' : 'tab-slide-left'}>
-          <PersonalTasksView backlogTasks={tasks} />
+          <PersonalTasksView backlogTasks={tasks} spaces={spaces} />
         </div>
       ) : tasks.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center max-w-lg mx-auto">

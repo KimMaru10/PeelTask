@@ -1,15 +1,19 @@
 import { useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
-import type { PersonalTask, PersonalTaskInput, Task } from '../types/Task'
+import type { PersonalTask, PersonalTaskInput, Space, Task } from '../types/Task'
 import { usePersonalTasks } from '../hooks/usePersonalTasks'
 import PersonalTaskCard from './PersonalTaskCard'
 import PersonalTaskForm from './PersonalTaskForm'
 
 interface PersonalTasksViewProps {
   backlogTasks: Task[]
+  spaces: Space[]
 }
 
-export default function PersonalTasksView({ backlogTasks }: PersonalTasksViewProps): JSX.Element {
+export default function PersonalTasksView({
+  backlogTasks,
+  spaces
+}: PersonalTasksViewProps): JSX.Element {
   const { tasks, loading, error, create, update, remove, toggleComplete } = usePersonalTasks()
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<PersonalTask | null>(null)
@@ -114,6 +118,7 @@ export default function PersonalTasksView({ backlogTasks }: PersonalTasksViewPro
         open={formOpen}
         initial={editing}
         backlogTasks={backlogTasks}
+        spaces={spaces}
         onClose={() => setFormOpen(false)}
         onSubmit={handleSubmit}
       />
