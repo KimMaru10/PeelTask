@@ -1,15 +1,34 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Task, Space } from '../types/Task'
+import { ClipboardList } from 'lucide-react'
+import type { PersonalTask, Space, Task } from '../types/Task'
 
 const DAYS_TO_SHOW = 14
 const DAY_WIDTH = 80
 const ROW_HEIGHT = 36
 const HOURS_PER_DAY = 8
+const PERSONAL_TASK_COLOR = '#7C3AED' // violet-600
 
 interface GanttChartProps {
   tasks: Task[]
   spaces: Space[]
+}
+
+interface GanttRow {
+  key: string
+  kind: 'task' | 'personal'
+  id: number
+  label: string
+  badge: string | null
+  color: string
+  opacity: number
+  dueDate: Date | null
+  estimatedHours: number
+  isCompleted: boolean
+}
+
+function backendUrl(): string {
+  return window.api?.getBackendUrl?.() ?? 'http://localhost:8080'
 }
 
 function toStartOfDay(date: Date): Date {
@@ -33,10 +52,14 @@ function getSpaceColor(spaceId: number, spaces: Space[]): string {
 
 function getPriorityOpacity(priority: string): number {
   switch (priority) {
-    case '高': return 1.0
-    case '中': return 0.7
-    case '低': return 0.5
-    default: return 0.7
+    case '高':
+      return 1.0
+    case '中':
+      return 0.7
+    case '低':
+      return 0.5
+    default:
+      return 0.7
   }
 }
 
@@ -47,8 +70,73 @@ function parseDate(dateStr: string | null): Date | null {
   return date
 }
 
+function buildRows(
+  tasks: Task[],
+  personalTasks: PersonalTask[],
+  spaces: Space[]
+): GanttRow[] {
+  const taskRows: GanttRow[] = [...tasks]
+    .sort((a, b) => b.score - a.score)
+    .map((t) => ({
+      key: `t-${t.id}`,
+      kind: 'task' as const,
+      id: t.id,
+      label: t.title,
+      badge: t.issueKey,
+      color: getSpaceColor(t.spaceId, spaces),
+      opacity: getPriorityOpacity(t.priority),
+      dueDate: parseDate(t.dueDate),
+      estimatedHours: t.estimatedHours,
+      isCompleted: false
+    }))
+
+  // 個人タスクは期限の近い順、期限なしは末尾にまとめる。
+  const personalRows: GanttRow[] = [...personalTasks]
+    .filter((p) => !p.isCompleted)
+    .sort((a, b) => {
+      const da = parseDate(a.dueDate)
+      const db = parseDate(b.dueDate)
+      if (da && db) return da.getTime() - db.getTime()
+      if (da && !db) return -1
+      if (!da && db) return 1
+      return 0
+    })
+    .map((p) => ({
+      key: `p-${p.id}`,
+      kind: 'personal' as const,
+      id: p.id,
+      label: p.title,
+      badge: null,
+      color: PERSONAL_TASK_COLOR,
+      opacity: 0.85,
+      dueDate: parseDate(p.dueDate),
+      estimatedHours: p.estimatedHours,
+      isCompleted: p.isCompleted
+    }))
+
+  return [...taskRows, ...personalRows]
+}
+
 export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Element {
   const navigate = useNavigate()
+  const [personalTasks, setPersonalTasks] = useState<PersonalTask[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    void (async (): Promise<void> => {
+      try {
+        const res = await fetch(`${backendUrl()}/api/personal-tasks?completed=false`)
+        if (!res.ok) return
+        const data = (await res.json()) as PersonalTask[]
+        if (!cancelled) setPersonalTasks(Array.isArray(data) ? data : [])
+      } catch {
+        // ガント表示の補助情報なので失敗しても致命的でない
+      }
+    })()
+    return (): void => {
+      cancelled = true
+    }
+  }, [])
 
   const today = useMemo(() => toStartOfDay(new Date()), [])
 
@@ -62,15 +150,18 @@ export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Elem
     return { dates: dateList, startDate: today }
   }, [today])
 
-  const sortedTasks = useMemo(() => {
-    return [...tasks].sort((a, b) => b.score - a.score)
-  }, [tasks])
+  const rows = useMemo(() => buildRows(tasks, personalTasks, spaces), [tasks, personalTasks, spaces])
 
   const totalWidth = DAYS_TO_SHOW * DAY_WIDTH
 
+  const handleRowClick = (row: GanttRow): void => {
+    if (row.kind === 'task') navigate(`/tasks/${row.id}`)
+    // 個人タスクは詳細ページがないのでクリック無視 (ホバーで詳細は補助情報のみ)
+  }
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-      {sortedTasks.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
           <p className="text-lg mb-1">タスクがありません</p>
         </div>
@@ -93,7 +184,9 @@ export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Elem
                       }`}
                       style={{ width: `${DAY_WIDTH}px` }}
                     >
-                      <div className={`text-[10px] ${isTodayCol ? 'text-amber-600 font-bold' : 'text-gray-400'}`}>
+                      <div
+                        className={`text-[10px] ${isTodayCol ? 'text-amber-600 font-bold' : 'text-gray-400'}`}
+                      >
                         {formatDay(date)}
                       </div>
                     </div>
@@ -103,33 +196,45 @@ export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Elem
             </div>
 
             {/* Rows */}
-            {sortedTasks.map((task) => {
-              const color = getSpaceColor(task.spaceId, spaces)
-              const opacity = getPriorityOpacity(task.priority)
-              const dueDate = parseDate(task.dueDate)
-              const isOverdue = dueDate !== null && dueDate < new Date()
+            {rows.map((row) => {
+              const isOverdue = row.dueDate !== null && row.dueDate < new Date()
 
               let barStart = 0
               let barWidth = DAY_WIDTH
-              if (dueDate) {
-                const dueDateNorm = toStartOfDay(dueDate)
-                const daysUntilDue = Math.round((dueDateNorm.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-                const estimatedDays = Math.max(Math.ceil(task.estimatedHours / HOURS_PER_DAY), 1)
+              if (row.dueDate) {
+                const dueDateNorm = toStartOfDay(row.dueDate)
+                const daysUntilDue = Math.round(
+                  (dueDateNorm.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+                )
+                const estimatedDays = Math.max(
+                  Math.ceil(row.estimatedHours / HOURS_PER_DAY),
+                  1
+                )
                 barStart = Math.max((daysUntilDue - estimatedDays) * DAY_WIDTH, 0)
                 barWidth = Math.min(estimatedDays * DAY_WIDTH, totalWidth - barStart)
               }
 
               return (
                 <div
-                  key={task.id}
-                  className="flex border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
+                  key={row.key}
+                  className={`flex border-b border-gray-100 transition-colors ${
+                    row.kind === 'task' ? 'cursor-pointer hover:bg-gray-50' : 'hover:bg-violet-50/30'
+                  }`}
                   style={{ height: `${ROW_HEIGHT}px` }}
-                  onClick={() => navigate(`/tasks/${task.id}`)}
+                  onClick={() => handleRowClick(row)}
                 >
                   <div className="w-60 shrink-0 px-3 flex items-center gap-2 border-r border-gray-200 overflow-hidden">
-                    <span className="text-[10px] text-gray-400 font-mono shrink-0">{task.issueKey}</span>
-                    <span className={`text-xs truncate ${isOverdue ? 'text-red-500' : 'text-gray-700'}`}>
-                      {task.title}
+                    {row.kind === 'personal' ? (
+                      <ClipboardList size={12} className="text-violet-500 shrink-0" />
+                    ) : (
+                      <span className="text-[10px] text-gray-400 font-mono shrink-0">
+                        {row.badge}
+                      </span>
+                    )}
+                    <span
+                      className={`text-xs truncate ${isOverdue ? 'text-red-500' : 'text-gray-700'}`}
+                    >
+                      {row.label}
                     </span>
                   </div>
 
@@ -144,12 +249,12 @@ export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Elem
                         left: `${barStart}px`,
                         width: `${Math.max(barWidth, 20)}px`,
                         height: `${ROW_HEIGHT - 12}px`,
-                        backgroundColor: color,
-                        opacity
+                        backgroundColor: row.color,
+                        opacity: row.opacity
                       }}
                     >
                       <span className="text-[10px] text-white font-medium truncate drop-shadow-sm">
-                        {task.estimatedHours > 0 ? `${task.estimatedHours}h` : ''}
+                        {row.estimatedHours > 0 ? `${row.estimatedHours}h` : ''}
                       </span>
                     </div>
                   </div>

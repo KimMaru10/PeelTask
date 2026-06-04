@@ -8,6 +8,9 @@ interface PersonalTaskFormProps {
   initial?: PersonalTask | null
   backlogTasks: Task[]
   spaces: Space[]
+  // 親 Backlog 課題が文脈上自明な場合 (例: Backlog 課題詳細ページから開く) は
+  // 親ピッカー UI を隠す。送信値の差し替えは呼び出し側で行う。
+  hideParentPicker?: boolean
   onClose: () => void
   onSubmit: (input: PersonalTaskInput) => Promise<boolean>
 }
@@ -27,6 +30,7 @@ export default function PersonalTaskForm({
   initial,
   backlogTasks,
   spaces,
+  hideParentPicker = false,
   onClose,
   onSubmit
 }: PersonalTaskFormProps): JSX.Element | null {
@@ -151,17 +155,19 @@ export default function PersonalTaskForm({
             </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">
-              関連する Backlog 課題 (任意)
-            </label>
-            <BacklogTaskPicker
-              value={parentId}
-              tasks={backlogTasks}
-              spaces={spaces}
-              onChange={setParentId}
-            />
-          </div>
+          {!hideParentPicker && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">
+                関連する Backlog 課題 (任意)
+              </label>
+              <BacklogTaskPicker
+                value={parentId}
+                tasks={backlogTasks}
+                spaces={spaces}
+                onChange={setParentId}
+              />
+            </div>
+          )}
 
           {error && <p className="text-xs text-rose-600">{error}</p>}
 

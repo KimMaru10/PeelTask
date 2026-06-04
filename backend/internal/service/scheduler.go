@@ -12,11 +12,34 @@ const (
 	defaultTaskHours      = 1.0
 )
 
-func GenerateSchedule(tasks []model.Task, startDate time.Time) ([]model.Schedule, error) {
-	scored := ScoreAllTasks(tasks, startDate)
+// scheduleItem は Backlog タスクと個人タスクを同一スケジュール上で扱うための統合表現。
+// Task / PersonalTask のいずれかが必ず非 nil で、もう一方は nil。
+type scheduleItem struct {
+	Hours        float64
+	Score        float64
+	Task         *model.Task
+	PersonalTask *model.PersonalTask
+}
 
-	sort.Slice(scored, func(i, j int) bool {
-		return scored[i].Score > scored[j].Score
+// CalcPersonalScore は個人タスク用の簡易スコアを返す。
+// Backlog にしかない優先度・マイルストーン・滞留度が無いため、
+// 期限の切迫度と工数ペナルティだけで構成する。
+func CalcPersonalScore(pt model.PersonalTask, now time.Time) float64 {
+	deadline := CalcDeadlineUrgency(pt.DueDate, now)
+	effort := CalcEffortPenalty(pt.EstimatedHours)
+	// Backlog 課題と並べたときに「中」優先扱いになるよう priority 相当を 0.6 で埋める。
+	return deadline*weightDeadline +
+		0.6*weightPriority +
+		effort*weightEffort
+}
+
+// GenerateSchedule は Backlog タスクと個人タスクを統合して日次スケジュールを生成する。
+// 期限の近さ・優先度・工数等のスコアでソートし、1 日 DefaultDailyWorkHours を上限に詰めていく。
+func GenerateSchedule(tasks []model.Task, personalTasks []model.PersonalTask, startDate time.Time) ([]model.Schedule, error) {
+	items := buildScheduleItems(tasks, personalTasks, startDate)
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Score > items[j].Score
 	})
 
 	var schedules []model.Schedule
@@ -24,11 +47,8 @@ func GenerateSchedule(tasks []model.Task, startDate time.Time) ([]model.Schedule
 	var currentSchedule *model.Schedule
 	orderIndex := 0
 
-	for _, task := range scored {
-		hours := task.EstimatedHours
-		if hours <= 0 {
-			hours = defaultTaskHours
-		}
+	for _, item := range items {
+		hours := item.Hours
 
 		for hours > 0 {
 			if currentSchedule == nil || currentSchedule.AllocatedHours >= DefaultDailyWorkHours {
@@ -58,11 +78,16 @@ func GenerateSchedule(tasks []model.Task, startDate time.Time) ([]model.Schedule
 			)
 
 			slot := model.ScheduleSlot{
-				TaskID:     task.ID,
 				StartAt:    slotStart,
 				EndAt:      slotEnd,
 				OrderIndex: orderIndex,
-				Task:       task,
+			}
+			if item.Task != nil {
+				slot.TaskID = item.Task.ID
+				slot.Task = item.Task
+			} else if item.PersonalTask != nil {
+				slot.PersonalTaskID = item.PersonalTask.ID
+				slot.PersonalTask = item.PersonalTask
 			}
 
 			currentSchedule.Slots = append(currentSchedule.Slots, slot)
@@ -77,6 +102,42 @@ func GenerateSchedule(tasks []model.Task, startDate time.Time) ([]model.Schedule
 	}
 
 	return schedules, nil
+}
+
+func buildScheduleItems(tasks []model.Task, personalTasks []model.PersonalTask, now time.Time) []scheduleItem {
+	items := make([]scheduleItem, 0, len(tasks)+len(personalTasks))
+
+	scored := ScoreAllTasks(tasks, now)
+	for i := range scored {
+		hours := scored[i].EstimatedHours
+		if hours <= 0 {
+			hours = defaultTaskHours
+		}
+		t := scored[i]
+		items = append(items, scheduleItem{
+			Hours: hours,
+			Score: t.Score,
+			Task:  &t,
+		})
+	}
+
+	for i := range personalTasks {
+		if personalTasks[i].IsCompleted {
+			continue
+		}
+		hours := personalTasks[i].EstimatedHours
+		if hours <= 0 {
+			hours = defaultTaskHours
+		}
+		pt := personalTasks[i]
+		items = append(items, scheduleItem{
+			Hours:        hours,
+			Score:        CalcPersonalScore(pt, now),
+			PersonalTask: &pt,
+		})
+	}
+
+	return items
 }
 
 func toStartOfDay(t time.Time) time.Time {

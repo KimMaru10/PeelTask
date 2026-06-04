@@ -28,7 +28,15 @@ func (h *ScheduleHandler) GetSchedule(c echo.Context) error {
 		})
 	}
 
-	schedules, err := service.GenerateSchedule(tasks, time.Now())
+	var personalTasks []model.PersonalTask
+	if err := h.db.Where("is_completed = ?", false).Find(&personalTasks).Error; err != nil {
+		log.Printf("error: failed to fetch personal tasks for schedule: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "failed to fetch personal tasks",
+		})
+	}
+
+	schedules, err := service.GenerateSchedule(tasks, personalTasks, time.Now())
 	if err != nil {
 		log.Printf("error: failed to generate schedule: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{

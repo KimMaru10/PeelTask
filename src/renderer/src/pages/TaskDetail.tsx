@@ -6,6 +6,7 @@ import { getScoreLabel } from '../utils/scoreLabel'
 import BacklogComments from '../components/BacklogComments'
 import BacklogContent from '../components/BacklogContent'
 import RelatedIssues from '../components/RelatedIssues'
+import RelatedPersonalTasks from '../components/RelatedPersonalTasks'
 
 function TaskDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
@@ -277,6 +278,9 @@ function TaskDetail(): JSX.Element {
 
         {/* 親子課題 */}
         <RelatedIssues taskId={task.id} spaceDomain={space?.domain ?? null} />
+
+        {/* 関連する個人タスク */}
+        <RelatedPersonalTasks parentTaskId={task.id} />
 
         {/* Backlog コメント */}
         <BacklogComments taskId={task.id} />

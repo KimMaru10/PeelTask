@@ -9,7 +9,7 @@ import (
 
 func TestGenerateSchedule_EmptyTasks(t *testing.T) {
 	start := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
-	schedules, err := GenerateSchedule([]model.Task{}, start)
+	schedules, err := GenerateSchedule([]model.Task{}, nil, start)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -25,7 +25,7 @@ func TestGenerateSchedule_SingleTaskFitsInOneDay(t *testing.T) {
 		{ID: 1, IssueKey: "T-1", Priority: "高", EstimatedHours: 4.0, DueDate: timePtr(start.AddDate(0, 0, 3))},
 	}
 
-	schedules, err := GenerateSchedule(tasks, start)
+	schedules, err := GenerateSchedule(tasks, nil, start)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestGenerateSchedule_TaskOverflowsToNextDay(t *testing.T) {
 		{ID: 1, IssueKey: "T-1", Priority: "高", EstimatedHours: 12.0, DueDate: timePtr(start.AddDate(0, 0, 3))},
 	}
 
-	schedules, err := GenerateSchedule(tasks, start)
+	schedules, err := GenerateSchedule(tasks, nil, start)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestGenerateSchedule_MultipleTasks(t *testing.T) {
 		{ID: 3, IssueKey: "T-3", Priority: "低", EstimatedHours: 2.0},
 	}
 
-	schedules, err := GenerateSchedule(tasks, start)
+	schedules, err := GenerateSchedule(tasks, nil, start)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestGenerateSchedule_ScoreOrdering(t *testing.T) {
 		{ID: 2, IssueKey: "HIGH", Priority: "高", EstimatedHours: 2.0, DueDate: timePtr(start.AddDate(0, 0, 1))},
 	}
 
-	schedules, err := GenerateSchedule(tasks, start)
+	schedules, err := GenerateSchedule(tasks, nil, start)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestGenerateSchedule_ZeroEstimatedHours(t *testing.T) {
 		{ID: 1, IssueKey: "T-1", Priority: "中", EstimatedHours: 0},
 	}
 
-	schedules, err := GenerateSchedule(tasks, start)
+	schedules, err := GenerateSchedule(tasks, nil, start)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestGenerateSchedule_SlotTimeRange(t *testing.T) {
 		{ID: 2, IssueKey: "T-2", Priority: "中", EstimatedHours: 2.0, DueDate: timePtr(start.AddDate(0, 0, 5))},
 	}
 
-	schedules, err := GenerateSchedule(tasks, start)
+	schedules, err := GenerateSchedule(tasks, nil, start)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -159,5 +159,75 @@ func TestGenerateSchedule_SlotTimeRange(t *testing.T) {
 	expectedSlot1Duration := 3 * time.Hour
 	if slot1.EndAt.Sub(slot1.StartAt) != expectedSlot1Duration {
 		t.Errorf("slot1 duration: expected %v, got %v", expectedSlot1Duration, slot1.EndAt.Sub(slot1.StartAt))
+	}
+}
+
+func TestGenerateSchedule_IncludesPersonalTasks(t *testing.T) {
+	start := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	personalTasks := []model.PersonalTask{
+		{ID: 10, Title: "個人タスク", EstimatedHours: 2.0, DueDate: timePtr(start.AddDate(0, 0, 2))},
+	}
+
+	schedules, err := GenerateSchedule(nil, personalTasks, start)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(schedules) != 1 {
+		t.Fatalf("expected 1 schedule, got %d", len(schedules))
+	}
+	slot := schedules[0].Slots[0]
+	if slot.PersonalTaskID != 10 {
+		t.Errorf("expected PersonalTaskID=10, got %d", slot.PersonalTaskID)
+	}
+	if slot.TaskID != 0 {
+		t.Errorf("expected TaskID=0 for personal slot, got %d", slot.TaskID)
+	}
+	if !slot.IsPersonal() {
+		t.Errorf("expected IsPersonal()=true")
+	}
+}
+
+func TestGenerateSchedule_SkipsCompletedPersonalTasks(t *testing.T) {
+	start := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	personalTasks := []model.PersonalTask{
+		{ID: 10, Title: "完了済み", EstimatedHours: 2.0, IsCompleted: true},
+		{ID: 11, Title: "未完了", EstimatedHours: 2.0, DueDate: timePtr(start.AddDate(0, 0, 1))},
+	}
+
+	schedules, err := GenerateSchedule(nil, personalTasks, start)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, sch := range schedules {
+		for _, slot := range sch.Slots {
+			if slot.PersonalTaskID == 10 {
+				t.Errorf("completed personal task should not be scheduled")
+			}
+		}
+	}
+}
+
+func TestGenerateSchedule_MixesBacklogAndPersonal(t *testing.T) {
+	start := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	tasks := []model.Task{
+		{ID: 1, IssueKey: "T-1", Priority: "高", EstimatedHours: 3.0, DueDate: timePtr(start.AddDate(0, 0, 1))},
+	}
+	personalTasks := []model.PersonalTask{
+		{ID: 10, Title: "Pエッセンシャル", EstimatedHours: 2.0, DueDate: timePtr(start.AddDate(0, 0, 1))},
+	}
+
+	schedules, err := GenerateSchedule(tasks, personalTasks, start)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	totalSlots := 0
+	for _, sch := range schedules {
+		totalSlots += len(sch.Slots)
+	}
+	if totalSlots != 2 {
+		t.Errorf("expected 2 slots (1 backlog + 1 personal), got %d", totalSlots)
 	}
 }
