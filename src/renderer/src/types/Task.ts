@@ -14,6 +14,7 @@ export interface Task {
   backlogCreatedAt: string | null
   createdUserName: string
   createdUserIconUrl: string
+  isWatched: boolean
 }
 
 export interface Space {

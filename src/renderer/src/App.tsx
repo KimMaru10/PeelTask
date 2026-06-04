@@ -1,5 +1,5 @@
 import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
-import { User, Building2, Settings as SettingsIcon, LayoutDashboard, HelpCircle, Search, Bell } from 'lucide-react'
+import { User, Building2, Eye, Settings as SettingsIcon, LayoutDashboard, HelpCircle, Search, Bell } from 'lucide-react'
 import { useState, createContext, useContext, useEffect } from 'react'
 import Dashboard from './pages/Dashboard'
 import Settings from './pages/Settings'
@@ -14,7 +14,7 @@ import MiniTimer from './components/MiniTimer'
 import { FocusTimerProvider } from './hooks/useFocusTimer'
 import type { Space } from './types/Task'
 
-type AssigneeMode = 'mine' | 'all'
+export type AssigneeMode = 'mine' | 'all' | 'watch'
 
 interface AppContextType {
   assigneeMode: AssigneeMode
@@ -166,6 +166,18 @@ function AppLayout(): JSX.Element {
           >
             <Building2 size={14} />
             全体
+          </button>
+          <button
+            onClick={() => setAssigneeMode('watch')}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
+              assigneeMode === 'watch'
+                ? 'bg-white text-gray-800 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            title="ウォッチに追加したタスク"
+          >
+            <Eye size={14} />
+            ウォッチ
           </button>
           </div>
 

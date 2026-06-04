@@ -25,6 +25,7 @@ type Task struct {
 	CreatedUserIconURL  string     `json:"createdUserIconUrl"`
 	SyncedAt         time.Time  `json:"syncedAt"`
 	LastNotifiedAt   *time.Time `json:"lastNotifiedAt"`
+	IsWatched        bool       `gorm:"index;default:false" json:"isWatched"`
 	CreatedAt        time.Time  `json:"createdAt"`
 	UpdatedAt        time.Time  `json:"updatedAt"`
 	Categories       []Category `gorm:"many2many:task_categories" json:"categories,omitempty"`

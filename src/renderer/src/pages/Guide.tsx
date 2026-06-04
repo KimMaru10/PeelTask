@@ -205,6 +205,7 @@ function Guide(): JSX.Element {
             <ul className="text-sm text-gray-600 space-y-1">
               <li>・<strong>自分</strong> — 自分に割り当てられたタスクのみ表示</li>
               <li>・<strong>全体</strong> — 自分がお知らせに入っているタスクを表示</li>
+              <li>・<strong>ウォッチ</strong> — 目アイコンで追加した見守り対象のタスクを表示（Backlog 側で削除されても、ウォッチ解除するまで残ります）</li>
             </ul>
           </div>
 

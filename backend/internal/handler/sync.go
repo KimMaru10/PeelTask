@@ -49,7 +49,13 @@ func (h *SyncHandler) GetTasks(c echo.Context) error {
 	mode := c.QueryParam("mode")
 	query := h.db.Preload(clause.Associations).Order("score DESC")
 
-	if mode != "all" {
+	switch mode {
+	case "all":
+		// 「全体」モード: フィルタなし（同期時点で notifiedUserId フィルタで絞り込み済み）
+	case "watch":
+		// 「ウォッチ」モード: ユーザーが明示的にウォッチに追加した課題のみ
+		query = query.Where("is_watched = ?", true)
+	default:
 		// 「自分」モード: 各スペースの MyUserID に一致する担当者のタスクのみ返す
 		var myUserIDs []int
 		if err := h.db.Model(&model.BacklogSpace{}).

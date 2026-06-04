@@ -155,6 +155,112 @@ func TestAddMemo_TaskNotFound(t *testing.T) {
 	}
 }
 
+func TestSetWatch_AddSuccess(t *testing.T) {
+	db := setupTestDB(t)
+	h := NewTaskHandler(db, nil)
+
+	db.Create(&model.Task{IssueKey: "T-1", Title: "Test", SpaceID: 1})
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/tasks/1/watch", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	if err := h.AddWatch(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+
+	var resp struct {
+		IsWatched bool `json:"isWatched"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !resp.IsWatched {
+		t.Errorf("expected isWatched=true, got false")
+	}
+
+	var task model.Task
+	if err := db.First(&task, 1).Error; err != nil {
+		t.Fatalf("fetch task: %v", err)
+	}
+	if !task.IsWatched {
+		t.Errorf("expected DB is_watched=true, got false")
+	}
+}
+
+func TestSetWatch_RemoveSuccess(t *testing.T) {
+	db := setupTestDB(t)
+	h := NewTaskHandler(db, nil)
+
+	db.Create(&model.Task{IssueKey: "T-1", Title: "Test", SpaceID: 1, IsWatched: true})
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodDelete, "/api/tasks/1/watch", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	if err := h.RemoveWatch(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+
+	var task model.Task
+	if err := db.First(&task, 1).Error; err != nil {
+		t.Fatalf("fetch task: %v", err)
+	}
+	if task.IsWatched {
+		t.Errorf("expected DB is_watched=false, got true")
+	}
+}
+
+func TestSetWatch_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	h := NewTaskHandler(db, nil)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/tasks/999/watch", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("999")
+
+	if err := h.AddWatch(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestSetWatch_InvalidID(t *testing.T) {
+	db := setupTestDB(t)
+	h := NewTaskHandler(db, nil)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/tasks/abc/watch", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("abc")
+
+	if err := h.AddWatch(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
 func TestDeleteMemo_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 	h := NewTaskHandler(db, nil)

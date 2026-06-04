@@ -166,9 +166,11 @@ func (s *Syncer) runSync() (int, []string) {
 				return nil
 			}
 
+			// ウォッチ中タスクは削除しない。Backlog 側で「お知らせ受信者から外れた」「担当者が変わった」等で
+			// 同期対象から外れても、ユーザーが明示的に見守ると宣言したものは画面から消さない。
 			var staleTaskIDs []uint
 			if err := tx.Model(&model.Task{}).
-				Where("space_id = ? AND issue_key NOT IN ?", result.SpaceID, activeIssueKeys).
+				Where("space_id = ? AND issue_key NOT IN ? AND is_watched = ?", result.SpaceID, activeIssueKeys, false).
 				Pluck("id", &staleTaskIDs).Error; err != nil {
 				return err
 			}

@@ -91,6 +91,8 @@ func main() {
 	api.GET("/tasks/:id/memos", taskHandler.GetMemos)
 	api.POST("/tasks/:id/memos", taskHandler.AddMemo)
 	api.DELETE("/tasks/:id/memos/:memoId", taskHandler.DeleteMemo)
+	api.POST("/tasks/:id/watch", taskHandler.AddWatch)
+	api.DELETE("/tasks/:id/watch", taskHandler.RemoveWatch)
 	api.GET("/tasks/:id/comments", commentHandler.Get)
 	api.GET("/tasks/:id/attachments/:filename", attachmentHandler.GetByName)
 	api.GET("/tasks/:id/related", childrenHandler.GetRelated)

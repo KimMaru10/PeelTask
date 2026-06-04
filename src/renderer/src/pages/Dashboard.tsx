@@ -65,7 +65,8 @@ function Dashboard(): JSX.Element {
   const fetchTasks = async (mode?: string): Promise<void> => {
     try {
       const currentMode = mode ?? assigneeMode
-      const modeParam = currentMode === 'all' ? '?mode=all' : ''
+      const modeParam =
+        currentMode === 'all' ? '?mode=all' : currentMode === 'watch' ? '?mode=watch' : ''
       const res = await fetch(`${backendUrl}/api/tasks${modeParam}`)
       if (!res.ok) throw new Error('fetch failed')
       const data = await res.json()
@@ -130,6 +131,28 @@ function Dashboard(): JSX.Element {
     fetchSpaces()
     fetchSyncStatus()
   }, [assigneeMode])
+
+  const handleToggleWatch = async (taskId: number, currentWatched: boolean): Promise<void> => {
+    const nextWatched = !currentWatched
+    // クロージャ時点のモードを固定。await 中にユーザーがタブを切り替えても古い値で判定する。
+    const modeAtClick = assigneeMode
+    // 楽観的更新: UI を即時切り替えて、失敗時のみ巻き戻す
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, isWatched: nextWatched } : t)))
+    try {
+      const res = await fetch(`${backendUrl}/api/tasks/${taskId}/watch`, {
+        method: nextWatched ? 'POST' : 'DELETE'
+      })
+      if (!res.ok) throw new Error('watch toggle failed')
+      // ウォッチタブから外した場合は一覧から消すため再取得
+      if (modeAtClick === 'watch' && !nextWatched) {
+        await fetchTasks(modeAtClick)
+      }
+    } catch (_err: unknown) {
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, isWatched: currentWatched } : t))
+      )
+    }
+  }
 
   const formatDate = (dateStr: string): string => {
     const date = new Date(dateStr)
@@ -251,6 +274,7 @@ function Dashboard(): JSX.Element {
               spaces={spaces}
               focusedTaskIds={focus.focusedTaskIds}
               onTogglePin={focus.togglePin}
+              onToggleWatch={handleToggleWatch}
             />
           ) : viewMode === 'gantt' ? (
             <GanttChart tasks={tasks} spaces={spaces} />

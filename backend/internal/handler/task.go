@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/KimMaru10/Backnote/backend/internal/model"
@@ -89,6 +90,43 @@ func (h *TaskHandler) AddMemo(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusCreated, memo)
+}
+
+// AddWatch はタスクをウォッチ対象に追加する。
+func (h *TaskHandler) AddWatch(c echo.Context) error {
+	return h.setWatch(c, true)
+}
+
+// RemoveWatch はタスクをウォッチ対象から外す。
+func (h *TaskHandler) RemoveWatch(c echo.Context) error {
+	return h.setWatch(c, false)
+}
+
+// setWatch はタスクの is_watched フラグを更新する共通処理。AddWatch / RemoveWatch から委譲される。
+func (h *TaskHandler) setWatch(c echo.Context, watched bool) error {
+	taskIDStr := c.Param("id")
+	taskID, parseErr := strconv.ParseUint(taskIDStr, 10, 64)
+	if parseErr != nil || taskID == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid task id"})
+	}
+	var rowsAffected int64
+	err := h.write(func(tx *gorm.DB) error {
+		result := tx.Model(&model.Task{}).Where("id = ?", taskID).Update("is_watched", watched)
+		if result.Error != nil {
+			return result.Error
+		}
+		rowsAffected = result.RowsAffected
+		return nil
+	})
+	if err != nil {
+		store.LogSQLiteError(err, "task.setWatch")
+		log.Printf("error: failed to set watch for task %d: %v", taskID, err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update watch"})
+	}
+	if rowsAffected == 0 {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
+	}
+	return c.JSON(http.StatusOK, map[string]bool{"isWatched": watched})
 }
 
 func (h *TaskHandler) DeleteMemo(c echo.Context) error {
