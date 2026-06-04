@@ -98,8 +98,11 @@ func (c *BacklogClient) fetchMyUserID(ctx context.Context, domain string, apiKey
 }
 
 // FetchIssues は指定スペースの課題を取得する。
-// assigneeID > 0 のときはその担当者のタスクのみ、0 のときはフィルタなしで取得。
-func (c *BacklogClient) FetchIssues(ctx context.Context, space model.BacklogSpace, apiKey string, assigneeID int) ([]model.Task, error) {
+// assigneeID > 0 のときはその担当者のタスクのみ。
+// notifiedUserID > 0 のときはお知らせ受信者がその ID のタスクのみ。
+// 両方 0 のときはフィルタなしで取得。
+// 両方 > 0 のときは AND 条件 (Backlog API の仕様)。現時点の呼び出し元では同時指定はしない。
+func (c *BacklogClient) FetchIssues(ctx context.Context, space model.BacklogSpace, apiKey string, assigneeID, notifiedUserID int) ([]model.Task, error) {
 	// statusId フィルタは付けない:
 	// - 標準ステータス (1=未対応, 2=処理中, 3=処理済み, 4=完了) に加え、
 	//   プロジェクトごとに異なるカスタムステータス（例: レビュー済み）が ID 5+ で存在する
@@ -110,6 +113,10 @@ func (c *BacklogClient) FetchIssues(ctx context.Context, space model.BacklogSpac
 
 	if assigneeID > 0 {
 		url += fmt.Sprintf("&assigneeId[]=%d", assigneeID)
+	}
+
+	if notifiedUserID > 0 {
+		url += fmt.Sprintf("&notifiedUserId[]=%d", notifiedUserID)
 	}
 
 	// プロジェクトフィルター
@@ -252,14 +259,24 @@ func (c *BacklogClient) FetchAllSpaces(ctx context.Context, spaces []model.Backl
 				log.Printf("warn: failed to fetch my user ID for space %s: %v", sp.Domain, userErr)
 			}
 
-			// 全体タスク（最近更新の上位 100 件）を取得
-			allTasks, fetchErr := c.FetchIssues(ctx, sp, apiKey, 0)
-
-			// 自分担当のタスクは別途取得して merge する。
-			// Backlog API は count=100 上限のため、自分担当が 100 件以上ある場合でも
-			// 必ず最新 100 件は取得できる。「全体」リストに含まれない自分担当も補完される。
+			// 「全体」= 自分がお知らせ受信者になっている課題のみ。
+			// プロジェクト全体ではなく、関与している課題に絞る方針。
+			// myUserID が取れない場合はお知らせ判定不能のため、全体タスクは取得しない。
+			// その代わり userErr を fetchErr に流して、呼び出し元の同期エラー集計に拾わせる。
+			var allTasks []model.Task
+			var fetchErr error
 			if myUserID > 0 {
-				myTasks, myErr := c.FetchIssues(ctx, sp, apiKey, myUserID)
+				allTasks, fetchErr = c.FetchIssues(ctx, sp, apiKey, 0, myUserID)
+			} else if userErr != nil {
+				fetchErr = userErr
+			} else {
+				log.Printf("warn: myUserID is 0 but no error for space %s, skipping all-tasks fetch", sp.Domain)
+			}
+
+			// 自分担当のタスクを別途取得して merge。
+			// 担当者は通常自動でお知らせに入るが、外されているケースの保険として併用する。
+			if myUserID > 0 {
+				myTasks, myErr := c.FetchIssues(ctx, sp, apiKey, myUserID, 0)
 				if myErr != nil {
 					log.Printf("warn: failed to fetch my tasks for space %s: %v", sp.Domain, myErr)
 				} else {
