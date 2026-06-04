@@ -204,7 +204,7 @@ function Guide(): JSX.Element {
             </h3>
             <ul className="text-sm text-gray-600 space-y-1">
               <li>・<strong>自分</strong> — 自分に割り当てられたタスクのみ表示</li>
-              <li>・<strong>全体</strong> — スペース全体のタスクを表示</li>
+              <li>・<strong>全体</strong> — 自分がお知らせに入っているタスクを表示</li>
             </ul>
           </div>
 

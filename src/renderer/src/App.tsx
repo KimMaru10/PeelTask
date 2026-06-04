@@ -162,7 +162,7 @@ function AppLayout(): JSX.Element {
                 ? 'bg-white text-gray-800 shadow-sm'
                 : 'text-gray-500 hover:text-gray-700'
             }`}
-            title="スペース全体のタスク"
+            title="自分がお知らせに入っているタスク"
           >
             <Building2 size={14} />
             全体
