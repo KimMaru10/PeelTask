@@ -39,6 +39,7 @@ func NewDatabase(dbPath string) (*gorm.DB, error) {
 	if err := db.AutoMigrate(
 		&model.BacklogSpace{},
 		&model.Task{},
+		&model.PersonalTask{},
 		&model.Schedule{},
 		&model.ScheduleSlot{},
 		&model.Category{},

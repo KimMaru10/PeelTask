@@ -30,6 +30,7 @@ import ListView from '../components/ListView'
 import GanttChart from '../components/GanttChart'
 import CalendarView from '../components/CalendarView'
 import DailyFocus from '../components/DailyFocus'
+import PersonalTasksView from '../components/PersonalTasksView'
 import { useFocus } from '../hooks/useFocus'
 import { useSessionState } from '../hooks/useSessionState'
 import loadingAnimation from '../assets/loading-animation.json'
@@ -65,8 +66,13 @@ function Dashboard(): JSX.Element {
   const fetchTasks = async (mode?: string): Promise<void> => {
     try {
       const currentMode = mode ?? assigneeMode
+      // personal モードでも親選択用に Backlog タスク全件を取得しておく。
       const modeParam =
-        currentMode === 'all' ? '?mode=all' : currentMode === 'watch' ? '?mode=watch' : ''
+        currentMode === 'all' || currentMode === 'personal'
+          ? '?mode=all'
+          : currentMode === 'watch'
+            ? '?mode=watch'
+            : ''
       const res = await fetch(`${backendUrl}/api/tasks${modeParam}`)
       if (!res.ok) throw new Error('fetch failed')
       const data = await res.json()
@@ -227,6 +233,10 @@ function Dashboard(): JSX.Element {
             style={{ width: 240, height: 240 }}
           />
           <p className="text-gray-500 -mt-4 text-base font-medium">{syncMessage}</p>
+        </div>
+      ) : assigneeMode === 'personal' ? (
+        <div key={slideKey} className={slideDir === 'right' ? 'tab-slide-right' : 'tab-slide-left'}>
+          <PersonalTasksView backlogTasks={tasks} />
         </div>
       ) : tasks.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center max-w-lg mx-auto">

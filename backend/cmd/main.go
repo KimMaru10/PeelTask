@@ -83,6 +83,7 @@ func main() {
 	attachmentHandler := handler.NewAttachmentHandler(db)
 	childrenHandler := handler.NewChildrenHandler(db)
 	backlogNotifHandler := handler.NewBacklogNotificationHandler(db)
+	personalTaskHandler := handler.NewPersonalTaskHandler(db, writer)
 
 	api := e.Group("/api")
 	api.GET("/health", healthHandler.HealthCheck)
@@ -93,6 +94,10 @@ func main() {
 	api.DELETE("/tasks/:id/memos/:memoId", taskHandler.DeleteMemo)
 	api.POST("/tasks/:id/watch", taskHandler.AddWatch)
 	api.DELETE("/tasks/:id/watch", taskHandler.RemoveWatch)
+	api.GET("/personal-tasks", personalTaskHandler.List)
+	api.POST("/personal-tasks", personalTaskHandler.Create)
+	api.PATCH("/personal-tasks/:id", personalTaskHandler.Update)
+	api.DELETE("/personal-tasks/:id", personalTaskHandler.Delete)
 	api.GET("/tasks/:id/comments", commentHandler.Get)
 	api.GET("/tasks/:id/attachments/:filename", attachmentHandler.GetByName)
 	api.GET("/tasks/:id/related", childrenHandler.GetRelated)

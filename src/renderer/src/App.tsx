@@ -1,5 +1,5 @@
 import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
-import { User, Building2, Eye, Settings as SettingsIcon, LayoutDashboard, HelpCircle, Search, Bell } from 'lucide-react'
+import { User, Building2, Eye, ClipboardList, Settings as SettingsIcon, LayoutDashboard, HelpCircle, Search, Bell } from 'lucide-react'
 import { useState, createContext, useContext, useEffect } from 'react'
 import Dashboard from './pages/Dashboard'
 import Settings from './pages/Settings'
@@ -14,7 +14,7 @@ import MiniTimer from './components/MiniTimer'
 import { FocusTimerProvider } from './hooks/useFocusTimer'
 import type { Space } from './types/Task'
 
-export type AssigneeMode = 'mine' | 'all' | 'watch'
+export type AssigneeMode = 'mine' | 'all' | 'watch' | 'personal'
 
 interface AppContextType {
   assigneeMode: AssigneeMode
@@ -178,6 +178,18 @@ function AppLayout(): JSX.Element {
           >
             <Eye size={14} />
             ウォッチ
+          </button>
+          <button
+            onClick={() => setAssigneeMode('personal')}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
+              assigneeMode === 'personal'
+                ? 'bg-white text-gray-800 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            title="Backnote 内で個別管理する自分のタスク"
+          >
+            <ClipboardList size={14} />
+            マイタスク
           </button>
           </div>
 

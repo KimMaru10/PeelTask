@@ -22,6 +22,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(
 		&model.BacklogSpace{},
 		&model.Task{},
+		&model.PersonalTask{},
 		&model.Schedule{},
 		&model.ScheduleSlot{},
 		&model.Category{},

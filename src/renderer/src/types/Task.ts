@@ -41,3 +41,26 @@ export interface FocusEntry {
   completedAt: string | null
   task?: Task
 }
+
+export interface PersonalTask {
+  id: number
+  title: string
+  description: string
+  dueDate: string | null
+  estimatedHours: number
+  isCompleted: boolean
+  completedAt: string | null
+  parentBacklogTaskId: number | null
+  orderIndex: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PersonalTaskInput {
+  title: string
+  description?: string
+  dueDate?: string | null
+  estimatedHours?: number
+  parentBacklogTaskId?: number | null
+  isCompleted?: boolean
+}

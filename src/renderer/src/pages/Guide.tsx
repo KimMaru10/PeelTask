@@ -206,6 +206,7 @@ function Guide(): JSX.Element {
               <li>・<strong>自分</strong> — 自分に割り当てられたタスクのみ表示</li>
               <li>・<strong>全体</strong> — 自分がお知らせに入っているタスクを表示</li>
               <li>・<strong>ウォッチ</strong> — 目アイコンで追加した見守り対象のタスクを表示（Backlog 側で削除されても、ウォッチ解除するまで残ります）</li>
+              <li>・<strong>マイタスク</strong> — Backnote 内で個別に作成・管理する自分専用のタスク。Backlog 課題に紐付けてサブタスク化することも可能</li>
             </ul>
           </div>
 
