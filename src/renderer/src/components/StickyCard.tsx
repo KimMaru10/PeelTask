@@ -1,6 +1,6 @@
 import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { Eye, Star } from 'lucide-react'
+import { Eye } from 'lucide-react'
 import { getScoreLabel } from '../utils/scoreLabel'
 
 interface StickyCardProps {
@@ -12,9 +12,7 @@ interface StickyCardProps {
   dueDate: string | null
   score: number
   spaceColor: string
-  isFocused?: boolean
   isWatched?: boolean
-  onTogglePin?: (id: number, current: boolean) => void
   onToggleWatch?: (id: number, current: boolean) => void
 }
 
@@ -53,9 +51,7 @@ export default function StickyCard({
   dueDate,
   score,
   spaceColor,
-  isFocused = false,
   isWatched = false,
-  onTogglePin,
   onToggleWatch
 }: StickyCardProps): JSX.Element {
   const navigate = useNavigate()
@@ -104,23 +100,7 @@ export default function StickyCard({
               }`}
               title={isWatched ? 'ウォッチから外す' : 'ウォッチに追加'}
             >
-              <Eye size={14} className={isWatched ? 'fill-sky-100' : ''} />
-            </button>
-          )}
-          {onTogglePin && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onTogglePin(id, isFocused)
-              }}
-              className={`p-1 rounded transition-colors ${
-                isFocused
-                  ? 'text-amber-500 hover:bg-amber-50'
-                  : 'text-gray-300 hover:text-amber-500 hover:bg-amber-50'
-              }`}
-              title={isFocused ? '今日のフォーカスから外す' : '今日のフォーカスに追加'}
-            >
-              <Star size={14} className={isFocused ? 'fill-amber-500' : ''} />
+              <Eye size={14} className={isWatched ? 'fill-sky-200' : ''} />
             </button>
           )}
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${priorityBadge.className}`}>

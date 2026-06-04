@@ -5,13 +5,9 @@ import Dashboard from './pages/Dashboard'
 import Settings from './pages/Settings'
 import TaskDetail from './pages/TaskDetail'
 import Guide from './pages/Guide'
-import FocusMode from './pages/FocusMode'
 import CommandPalette from './components/CommandPalette'
 import NotificationsPanel from './components/NotificationsPanel'
 import TrayPopoverApp from './components/TrayPopoverApp'
-import BackToTop from './components/BackToTop'
-import MiniTimer from './components/MiniTimer'
-import { FocusTimerProvider } from './hooks/useFocusTimer'
 import type { Space } from './types/Task'
 
 export type AssigneeMode = 'mine' | 'all' | 'watch' | 'personal'
@@ -215,15 +211,11 @@ function AppLayout(): JSX.Element {
         onClose={() => setNotifPanelOpen(false)}
         onUnreadCountChange={setUnreadCount}
       />
-      <MiniTimer />
-      <BackToTop />
-
       <main className="p-6">
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/tasks/:id" element={<TaskDetail />} />
-          <Route path="/focus/:id" element={<FocusMode />} />
           <Route path="/guide" element={<Guide />} />
         </Routes>
       </main>
@@ -244,11 +236,9 @@ function App(): JSX.Element {
 
   return (
     <AppContext.Provider value={{ assigneeMode, setAssigneeMode }}>
-      <FocusTimerProvider>
-        <HashRouter>
-          <AppLayout />
-        </HashRouter>
-      </FocusTimerProvider>
+      <HashRouter>
+        <AppLayout />
+      </HashRouter>
     </AppContext.Provider>
   )
 }

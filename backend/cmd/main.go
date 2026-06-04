@@ -78,7 +78,6 @@ func main() {
 	settingHandler := handler.NewSettingHandler(db, writer)
 	notificationHandler := handler.NewNotificationHandler(db, writer)
 	searchHandler := handler.NewSearchHandler(db)
-	focusHandler := handler.NewFocusHandler(db, writer)
 	commentHandler := handler.NewCommentHandler(db)
 	attachmentHandler := handler.NewAttachmentHandler(db)
 	childrenHandler := handler.NewChildrenHandler(db)
@@ -121,10 +120,6 @@ func main() {
 	api.GET("/notifications/backlog/count", backlogNotifHandler.Count)
 	api.POST("/notifications/backlog/:spaceId/:id/read", backlogNotifHandler.MarkRead)
 	api.GET("/search", searchHandler.Search)
-	api.GET("/focus", focusHandler.Get)
-	api.PUT("/focus", focusHandler.Put)
-	api.POST("/focus/:taskId/complete", focusHandler.Complete)
-	api.DELETE("/focus/:taskId", focusHandler.Remove)
 
 	go func() {
 		log.Printf("Backnote backend starting on :%s", port)

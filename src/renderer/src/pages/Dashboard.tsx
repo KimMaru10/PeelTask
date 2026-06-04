@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Settings, HelpCircle } from 'lucide-react'
+import Lottie from 'lottie-react'
 import { useAppContext, type AssigneeMode } from '../App'
+import type { Task, Space } from '../types/Task'
+import ListView from '../components/ListView'
+import GanttChart from '../components/GanttChart'
+import CalendarView from '../components/CalendarView'
+import PersonalTasksView from '../components/PersonalTasksView'
+import { useSessionState } from '../hooks/useSessionState'
+import loadingAnimation from '../assets/loading-animation.json'
 
 const SYNC_MESSAGES = [
   '課題を更新しています...',
@@ -24,23 +32,27 @@ const SYNC_MESSAGES = [
 function getRandomSyncMessage(): string {
   return SYNC_MESSAGES[Math.floor(Math.random() * SYNC_MESSAGES.length)]
 }
-import Lottie from 'lottie-react'
-import type { Task, Space } from '../types/Task'
-import ListView from '../components/ListView'
-import GanttChart from '../components/GanttChart'
-import CalendarView from '../components/CalendarView'
-import DailyFocus from '../components/DailyFocus'
-import PersonalTasksView from '../components/PersonalTasksView'
-import { useFocus } from '../hooks/useFocus'
-import { useSessionState } from '../hooks/useSessionState'
-import loadingAnimation from '../assets/loading-animation.json'
 
 type ViewMode = 'list' | 'gantt' | 'calendar'
+
+// タブ毎に「今このタブで何が見えているか」を 1 行で示すキャプション。
+// 切替時にユーザーが現在地を把握しやすくする。
+function TabDescription({ mode }: { mode: AssigneeMode }): JSX.Element | null {
+  const text =
+    mode === 'mine'
+      ? '自分が担当になっている課題を表示しています'
+      : mode === 'all'
+        ? '自分がお知らせに入っている課題を表示しています'
+        : mode === 'watch'
+          ? '目アイコンで追加した、見守り中の課題を表示しています'
+          : null
+  if (!text) return null
+  return <p className="mb-3 text-xs text-gray-500">{text}</p>
+}
 
 function Dashboard(): JSX.Element {
   const { assigneeMode } = useAppContext()
   const navigate = useNavigate()
-  const focus = useFocus()
   const [tasks, setTasks] = useState<Task[]>([])
   const [loadedMode, setLoadedMode] = useState<AssigneeMode | null>(null)
   const [spaces, setSpaces] = useState<Space[]>([])
@@ -275,39 +287,28 @@ function Dashboard(): JSX.Element {
           </div>
         </div>
       ) : tasks.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center max-w-lg mx-auto">
-          <h3 className="text-base font-semibold text-gray-700 mb-2">
-            {assigneeMode === 'watch'
-              ? 'ウォッチ中の課題はまだありません'
-              : assigneeMode === 'all'
-                ? 'お知らせに入っている課題がありません'
-                : '担当タスクがありません'}
-          </h3>
-          <p className="text-sm text-gray-500">
-            {assigneeMode === 'watch'
-              ? 'カードの目アイコンを押すと、課題をウォッチに追加できます。'
-              : '同期を実行するか、Backlog 側の割り当てを確認してください。'}
-          </p>
+        <div>
+          <TabDescription mode={assigneeMode} />
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center max-w-lg mx-auto">
+            <h3 className="text-base font-semibold text-gray-700 mb-2">
+              {assigneeMode === 'watch'
+                ? 'ウォッチ中の課題はまだありません'
+                : assigneeMode === 'all'
+                  ? 'お知らせに入っている課題がありません'
+                  : '担当タスクがありません'}
+            </h3>
+            <p className="text-sm text-gray-500">
+              {assigneeMode === 'watch'
+                ? 'カードの目アイコンを押すと、課題をウォッチに追加できます。'
+                : '同期を実行するか、Backlog 側の割り当てを確認してください。'}
+            </p>
+          </div>
         </div>
       ) : (
         <div key={slideKey} className={slideDir === 'right' ? 'tab-slide-right' : 'tab-slide-left'}>
-          <DailyFocus
-            tasks={tasks}
-            spaces={spaces}
-            entries={focus.entries}
-            loading={focus.loading}
-            onSetEntries={focus.setEntries}
-            onRemove={focus.remove}
-            onComplete={focus.complete}
-          />
+          <TabDescription mode={assigneeMode} />
           {viewMode === 'list' ? (
-            <ListView
-              tasks={tasks}
-              spaces={spaces}
-              focusedTaskIds={focus.focusedTaskIds}
-              onTogglePin={focus.togglePin}
-              onToggleWatch={handleToggleWatch}
-            />
+            <ListView tasks={tasks} spaces={spaces} onToggleWatch={handleToggleWatch} />
           ) : viewMode === 'gantt' ? (
             <GanttChart tasks={tasks} spaces={spaces} />
           ) : (

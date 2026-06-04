@@ -1,4 +1,4 @@
-import { Settings, Globe, Key, FolderKanban, User, Building2, RefreshCw, MessageSquare, BarChart3, Calendar, List, Bell, Star, Search } from 'lucide-react'
+import { Settings, Globe, Key, FolderKanban, User, Building2, RefreshCw, MessageSquare, BarChart3, Calendar, List, Bell, Search } from 'lucide-react'
 
 function Guide(): JSX.Element {
   return (
@@ -336,26 +336,6 @@ function Guide(): JSX.Element {
         </div>
       </section>
 
-      {/* デイリーフォーカス */}
-      <section className="mb-10">
-        <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <span className="bg-amber-100 text-amber-600 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">★</span>
-          デイリーフォーカス
-        </h2>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-sm text-gray-600 mb-3 flex items-center gap-1.5">
-            <Star size={14} className="text-amber-500" />
-            「今日やる 3 つ」をピン留めして、一日の意思決定を支援します
-          </p>
-          <ul className="text-sm text-gray-600 space-y-2">
-            <li>・初回: <strong>「おすすめ 3 件を採用」</strong>でスコア上位 3 件をワンクリック設定</li>
-            <li>・各タスクカード右上の <strong>★ ボタン</strong>でピン留め / 解除</li>
-            <li>・フォーカスカードの <strong>「✓ 完了」</strong>でその場で完了マーク</li>
-            <li>・日付が変わると翌日のフォーカスは自動でリセット</li>
-          </ul>
-        </div>
-      </section>
-
       {/* クイックジャンプ */}
       <section className="mb-10">
         <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
@@ -373,26 +353,6 @@ function Guide(): JSX.Element {
             <li>・<kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 border border-gray-200 rounded">↑↓</kbd> でカーソル移動、<kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 border border-gray-200 rounded">↵</kbd> で詳細遷移</li>
             <li>・<kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 border border-gray-200 rounded">Esc</kbd> で閉じる</li>
             <li>・ヘッダー右上の<strong>「検索」</strong>ボタンからも開けます</li>
-          </ul>
-        </div>
-      </section>
-
-      {/* 集中モード */}
-      <section className="mb-10">
-        <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <span className="bg-orange-100 text-orange-600 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">🍅</span>
-          集中モード（ポモドーロ）
-        </h2>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-sm text-gray-600 mb-3">
-            タスクに集中する時間を作り、作業時間を自動でローカルメモに記録します。
-          </p>
-          <ul className="text-sm text-gray-600 space-y-2">
-            <li>・タスク詳細ページの<strong>「🍅 集中する」</strong>ボタンで開始</li>
-            <li>・15 / 25 / 45 / 60 分のプリセット選択可</li>
-            <li>・タイマー終了時にデスクトップ通知</li>
-            <li>・完了 / 中断時に作業時間をメモへ自動追記</li>
-            <li>・他のタブやアプリ最小化中も継続</li>
           </ul>
         </div>
       </section>
