@@ -238,7 +238,7 @@ function Dashboard(): JSX.Element {
         <div key={slideKey} className={slideDir === 'right' ? 'tab-slide-right' : 'tab-slide-left'}>
           <PersonalTasksView backlogTasks={tasks} spaces={spaces} />
         </div>
-      ) : tasks.length === 0 ? (
+      ) : spaces.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center max-w-lg mx-auto">
           <div className="w-20 h-20 bg-brand/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
             <img src={new URL('../assets/logo.svg', import.meta.url).href} alt="" className="w-12 h-12" />
@@ -266,6 +266,21 @@ function Dashboard(): JSX.Element {
               はじめての方はこちら
             </button>
           </div>
+        </div>
+      ) : tasks.length === 0 ? (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center max-w-lg mx-auto">
+          <h3 className="text-base font-semibold text-gray-700 mb-2">
+            {assigneeMode === 'watch'
+              ? 'ウォッチ中の課題はまだありません'
+              : assigneeMode === 'all'
+                ? 'お知らせに入っている課題がありません'
+                : '担当タスクがありません'}
+          </h3>
+          <p className="text-sm text-gray-500">
+            {assigneeMode === 'watch'
+              ? 'カードの目アイコンを押すと、課題をウォッチに追加できます。'
+              : '同期を実行するか、Backlog 側の割り当てを確認してください。'}
+          </p>
         </div>
       ) : (
         <div key={slideKey} className={slideDir === 'right' ? 'tab-slide-right' : 'tab-slide-left'}>
