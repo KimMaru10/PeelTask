@@ -118,9 +118,11 @@ func (s *Syncer) runSync() (int, []string) {
 	var errs []string
 
 	for _, result := range results {
+		// 部分エラー (例: 「全体」フェッチだけ失敗、「自分」フェッチは成功) のときも、
+		// 取れているタスクは UPSERT + クリーンアップを進めたい。
+		// エラーは集計だけして処理は継続する。
 		if result.Err != nil {
 			errs = append(errs, result.Err.Error())
-			continue
 		}
 
 		if len(result.Tasks) > 0 {

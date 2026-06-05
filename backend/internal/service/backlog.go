@@ -67,6 +67,21 @@ type backlogIssue struct {
 	ParentIssueID *int    `json:"parentIssueId"`
 	Description   string  `json:"description"`
 	Created       *string `json:"created"`
+	NotifiedUsers []struct {
+		ID int `json:"id"`
+	} `json:"notifiedUsers"`
+}
+
+// notifiedUsersContains は notifiedUsers リストに指定ユーザー ID が含まれるかを返す。
+func notifiedUsersContains(users []struct {
+	ID int `json:"id"`
+}, userID int) bool {
+	for _, u := range users {
+		if u.ID == userID {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *BacklogClient) fetchMyUserID(ctx context.Context, domain string, apiKey string) (int, error) {
@@ -98,25 +113,26 @@ func (c *BacklogClient) fetchMyUserID(ctx context.Context, domain string, apiKey
 }
 
 // FetchIssues は指定スペースの課題を取得する。
-// assigneeID > 0 のときはその担当者のタスクのみ。
-// notifiedUserID > 0 のときはお知らせ受信者がその ID のタスクのみ。
+//
+// assigneeID > 0 のとき: Backlog API の assigneeId[] フィルタで担当者を絞り込む。
+//
+// filterNotifiedUserID > 0 のとき: クライアント側で notifiedUsers にこの ID を
+// 含む課題だけを返す (Backlog API は notifiedUserId[] パラメータをサポートしないため、
+// 全件取得してから絞り込む)。最新 100 件の中での絞り込みになる点に注意。
+//
 // 両方 0 のときはフィルタなしで取得。
-// 両方 > 0 のときは AND 条件 (Backlog API の仕様)。現時点の呼び出し元では同時指定はしない。
-func (c *BacklogClient) FetchIssues(ctx context.Context, space model.BacklogSpace, apiKey string, assigneeID, notifiedUserID int) ([]model.Task, error) {
+func (c *BacklogClient) FetchIssues(ctx context.Context, space model.BacklogSpace, apiKey string, assigneeID, filterNotifiedUserID int) ([]model.Task, error) {
 	// statusId フィルタは付けない:
 	// - 標準ステータス (1=未対応, 2=処理中, 3=処理済み, 4=完了) に加え、
 	//   プロジェクトごとに異なるカスタムステータス（例: レビュー済み）が ID 5+ で存在する
 	// - プロジェクトのカスタムステータスを動的に取得する代わりに、
 	//   全件取得してクライアント側で「完了」を除外する方が汎用的
-	url := fmt.Sprintf("https://%s/api/v2/issues?apiKey=%s&count=%d",
+	// 更新日時降順で取得することで、「最新に動いている課題から最大 100 件」になる。
+	url := fmt.Sprintf("https://%s/api/v2/issues?apiKey=%s&count=%d&sort=updated&order=desc",
 		space.Domain, apiKey, issuesPerPage)
 
 	if assigneeID > 0 {
 		url += fmt.Sprintf("&assigneeId[]=%d", assigneeID)
-	}
-
-	if notifiedUserID > 0 {
-		url += fmt.Sprintf("&notifiedUserId[]=%d", notifiedUserID)
 	}
 
 	// プロジェクトフィルター
@@ -157,6 +173,10 @@ func (c *BacklogClient) FetchIssues(ctx context.Context, space model.BacklogSpac
 	for _, issue := range issues {
 		// 完了タスクは除外（標準 status=4 とローカライズ名「完了」両方をチェック）
 		if issue.Status.Name == model.TaskStatusCompleted {
+			continue
+		}
+		// クライアント側でお知らせ受信者の絞り込みを行う。
+		if filterNotifiedUserID > 0 && !notifiedUsersContains(issue.NotifiedUsers, filterNotifiedUserID) {
 			continue
 		}
 		tasks = append(tasks, issueToTask(issue, space.ID))
