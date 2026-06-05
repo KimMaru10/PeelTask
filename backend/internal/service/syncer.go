@@ -160,20 +160,24 @@ func (s *Syncer) runSync() (int, []string) {
 				}
 			}
 
-			// クリーンアップ: Backlog 側で完了/削除された課題をローカルからも削除。
-			// activeIssueKeys が空のときは Backlog API が一時的に 0 件返した可能性が高いため、
-			// 安全側に倒してクリーンアップをスキップする（誤って全タスクを削除するのを防ぐ）。
-			if len(activeIssueKeys) == 0 {
-				log.Printf("sync: skip cleanup for space %d (no active tasks fetched)", result.SpaceID)
+			// クリーンアップ: Backlog 側で完了/削除された / お知らせから外れた課題をローカルからも削除。
+			// FetchOK=false (API 一時障害等) のときは誤削除を避けるためスキップ。
+			// FetchOK=true なら 0 件返ったとしても「正規に 0 件」なのでクリーンアップを実行する。
+			if !result.FetchOK {
+				log.Printf("sync: skip cleanup for space %d (fetch not fully successful)", result.SpaceID)
 				return nil
 			}
 
 			// ウォッチ中タスクは削除しない。Backlog 側で「お知らせ受信者から外れた」「担当者が変わった」等で
 			// 同期対象から外れても、ユーザーが明示的に見守ると宣言したものは画面から消さない。
+			// activeIssueKeys が空のときは NOT IN ? 句が壊れるため、別クエリで「全部削除」する。
+			staleQuery := tx.Model(&model.Task{}).
+				Where("space_id = ? AND is_watched = ?", result.SpaceID, false)
+			if len(activeIssueKeys) > 0 {
+				staleQuery = staleQuery.Where("issue_key NOT IN ?", activeIssueKeys)
+			}
 			var staleTaskIDs []uint
-			if err := tx.Model(&model.Task{}).
-				Where("space_id = ? AND issue_key NOT IN ? AND is_watched = ?", result.SpaceID, activeIssueKeys, false).
-				Pluck("id", &staleTaskIDs).Error; err != nil {
+			if err := staleQuery.Pluck("id", &staleTaskIDs).Error; err != nil {
 				return err
 			}
 			if len(staleTaskIDs) > 0 {

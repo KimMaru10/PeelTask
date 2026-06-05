@@ -253,8 +253,11 @@ func issueToTask(issue backlogIssue, spaceID uint) model.Task {
 }
 
 type SyncResult struct {
-	SpaceID  uint
-	Tasks    []model.Task
+	SpaceID uint
+	Tasks   []model.Task
+	// FetchOK が true のときは、このスペースの全フェッチが成功した (タスクが 0 件でも OK)。
+	// クリーンアップは FetchOK=true のときだけ走らせる（API エラー時の誤削除を防止）。
+	FetchOK  bool
 	MyUserID int
 	Err      error
 }
@@ -285,8 +288,12 @@ func (c *BacklogClient) FetchAllSpaces(ctx context.Context, spaces []model.Backl
 			// その代わり userErr を fetchErr に流して、呼び出し元の同期エラー集計に拾わせる。
 			var allTasks []model.Task
 			var fetchErr error
+			notifiedOK := false
 			if myUserID > 0 {
 				allTasks, fetchErr = c.FetchIssues(ctx, sp, apiKey, 0, myUserID)
+				if fetchErr == nil {
+					notifiedOK = true
+				}
 			} else if userErr != nil {
 				fetchErr = userErr
 			} else {
@@ -295,16 +302,22 @@ func (c *BacklogClient) FetchAllSpaces(ctx context.Context, spaces []model.Backl
 
 			// 自分担当のタスクを別途取得して merge。
 			// 担当者は通常自動でお知らせに入るが、外されているケースの保険として併用する。
+			assigneeOK := false
 			if myUserID > 0 {
 				myTasks, myErr := c.FetchIssues(ctx, sp, apiKey, myUserID, 0)
 				if myErr != nil {
 					log.Printf("warn: failed to fetch my tasks for space %s: %v", sp.Domain, myErr)
 				} else {
 					allTasks = mergeTasksByIssueKey(allTasks, myTasks)
+					assigneeOK = true
 				}
 			}
 
-			results[idx] = SyncResult{SpaceID: sp.ID, Tasks: allTasks, MyUserID: myUserID, Err: fetchErr}
+			// 「両方の fetch が成功した」場合のみクリーンアップを許可する。
+			// 0 件返ったときも (誤削除回避ガードに引っかからず) 確実に古いデータを掃除する。
+			fetchOK := notifiedOK && assigneeOK
+
+			results[idx] = SyncResult{SpaceID: sp.ID, Tasks: allTasks, FetchOK: fetchOK, MyUserID: myUserID, Err: fetchErr}
 		}(i, space)
 	}
 
