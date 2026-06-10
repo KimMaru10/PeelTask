@@ -257,7 +257,14 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
 
   const renderDayCell = (date: Date, isCurrentMonth: boolean = true): JSX.Element => {
     const key = toStartOfDay(date).toISOString()
-    const dayItems = itemsByDate.get(key) ?? []
+    const rawItems = itemsByDate.get(key) ?? []
+    // 帯表示が連続セルで同じ垂直位置に並ぶよう、個人タスクを先頭・ID 昇順で固定。
+    // Backlog タスクなど他の item は personal の後に並ぶ。
+    const dayItems = [...rawItems].sort((a, b) => {
+      if (a.kind === 'personal' && b.kind !== 'personal') return -1
+      if (a.kind !== 'personal' && b.kind === 'personal') return 1
+      return a.id - b.id
+    })
     const isToday = toStartOfDay(date).getTime() === today.getTime()
     const isWeekend = date.getDay() === 0 || date.getDay() === 6
     const isDragging = draggingPersonalId !== null
@@ -307,7 +314,12 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
                   : item.spanPosition === 'end'
                     ? 'rounded-r'
                     : ''
-            // 中間セルでは左右に隙間を入れず帯が繋がって見えるよう、px-0 にする。
+            // セル間で帯が繋がって見えるよう、セルの p-1 (4px) を負マージンで打ち消す。
+            // start: 右に拡張、middle: 両端拡張、end: 左に拡張。
+            const isContinuousRight =
+              item.spanPosition === 'start' || item.spanPosition === 'middle'
+            const isContinuousLeft =
+              item.spanPosition === 'middle' || item.spanPosition === 'end'
             const paddingClass = item.spanPosition === 'middle' ? 'px-0' : 'px-1'
             return (
               <div
@@ -328,7 +340,13 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
                 } ${draggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
                   draggingPersonalId === item.id ? 'opacity-40' : ''
                 }`}
-                style={{ backgroundColor: `${item.color}40`, color: item.color }}
+                style={{
+                  backgroundColor: `${item.color}40`,
+                  color: item.color,
+                  // セル padding と境界 border (1px) を覆って隣のセルと帯を連結する。
+                  marginLeft: isContinuousLeft ? '-5px' : undefined,
+                  marginRight: isContinuousRight ? '-5px' : undefined
+                }}
                 onClick={
                   clickable ? () => navigate(`/tasks/${item.id}`) : undefined
                 }
