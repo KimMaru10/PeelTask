@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ClipboardList } from 'lucide-react'
 import type { PersonalTask, Space, Task } from '../types/Task'
+import { resolvePersonalTaskColor } from '../utils/personalTaskColor'
 
 const DAYS_TO_SHOW = 14
 const DAY_WIDTH = 80
 const ROW_HEIGHT = 36
 const HOURS_PER_DAY = 8
-const PERSONAL_TASK_COLOR = '#7C3AED' // violet-600
 
 interface GanttChartProps {
   tasks: Task[]
@@ -110,7 +110,7 @@ function buildRows(
       id: p.id,
       label: p.title,
       badge: null,
-      color: PERSONAL_TASK_COLOR,
+      color: resolvePersonalTaskColor(p.color),
       opacity: 0.85,
       startDate: parseDate(p.startDate),
       dueDate: parseDate(p.dueDate),
@@ -430,6 +430,21 @@ export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Elem
                       const hasRangeHandles = draggable && row.startDate !== null
 
                       return (
+                        <>
+                          {/* ドラッグ中は元位置に dashed ゴーストを残して「from → to」を視覚化 */}
+                          {isDragging && (
+                            <div
+                              aria-hidden
+                              className="absolute top-1.5 rounded-md border-2 border-dashed pointer-events-none"
+                              style={{
+                                left: `${barStart}px`,
+                                width: `${Math.max(barWidth, 20)}px`,
+                                height: `${ROW_HEIGHT - 12}px`,
+                                borderColor: row.color,
+                                opacity: 0.5
+                              }}
+                            />
+                          )}
                         <div
                           className="absolute top-1.5 rounded-md flex items-center overflow-hidden select-none"
                           style={{
@@ -470,6 +485,7 @@ export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Elem
                             />
                           )}
                         </div>
+                        </>
                       )
                     })()}
                   </div>

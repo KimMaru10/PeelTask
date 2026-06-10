@@ -44,6 +44,8 @@ export interface PersonalTask {
   completedAt: string | null
   parentBacklogTaskId: number | null
   orderIndex: number
+  /** カレンダー/ガントでの表示色 (#RRGGBB)。空文字のときはデフォルト色 */
+  color: string
   createdAt: string
   updatedAt: string
 }
@@ -56,4 +58,5 @@ export interface PersonalTaskInput {
   estimatedHours?: number
   parentBacklogTaskId?: number | null
   isCompleted?: boolean
+  color?: string
 }

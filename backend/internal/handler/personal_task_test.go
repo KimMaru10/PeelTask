@@ -401,3 +401,50 @@ func TestPersonalTaskUpdate_ClearStartDate(t *testing.T) {
 		t.Errorf("expected startDate cleared, got %v", *task.StartDate)
 	}
 }
+
+func TestPersonalTaskCreate_WithColor(t *testing.T) {
+	db := setupTestDB(t)
+	h := NewPersonalTaskHandler(db, nil)
+
+	e := echo.New()
+	body := `{"title":"colored","color":"#7C3AED"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/personal-tasks", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Create(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusCreated {
+		t.Errorf("expected 201, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	var task model.PersonalTask
+	if err := json.Unmarshal(rec.Body.Bytes(), &task); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if task.Color != "#7c3aed" {
+		t.Errorf("expected color normalized to lowercase, got %q", task.Color)
+	}
+}
+
+func TestPersonalTaskCreate_InvalidColorRejected(t *testing.T) {
+	db := setupTestDB(t)
+	h := NewPersonalTaskHandler(db, nil)
+
+	e := echo.New()
+	for _, bad := range []string{`"red"`, `"#fff"`, `"#1234567"`, `"#xxxxxx"`, `"7C3AED"`} {
+		body := `{"title":"x","color":` + bad + `}`
+		req := httptest.NewRequest(http.MethodPost, "/api/personal-tasks", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		if err := h.Create(c); err != nil {
+			t.Fatalf("handler error: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("color %s should be rejected, got %d", bad, rec.Code)
+		}
+	}
+}

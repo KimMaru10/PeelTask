@@ -1,14 +1,13 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Task, PersonalTask, Space } from '../types/Task'
+import { resolvePersonalTaskColor } from '../utils/personalTaskColor'
 
 function backendUrl(): string {
   return window.api?.getBackendUrl?.() ?? 'http://localhost:8080'
 }
 
 type CalendarMode = 'week' | 'month'
-
-const PERSONAL_TASK_COLOR = '#7C3AED' // violet-600
 
 type SpanPosition = 'single' | 'start' | 'middle' | 'end'
 
@@ -145,7 +144,7 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
           kind: 'personal',
           id: p.id,
           title: p.title,
-          color: PERSONAL_TASK_COLOR,
+          color: resolvePersonalTaskColor(p.color),
           dueDate: p.dueDate,
           badge: '📋',
           spanPosition: 'single',
@@ -169,7 +168,7 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
           kind: 'personal',
           id: p.id,
           title: p.title,
-          color: PERSONAL_TASK_COLOR,
+          color: resolvePersonalTaskColor(p.color),
           dueDate: p.dueDate,
           badge: showLabel ? '📋' : '',
           spanPosition: pos,
@@ -200,6 +199,36 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
 
   // ドラッグ中の個人タスク ID。null のときはドラッグ中でない。
   const [draggingPersonalId, setDraggingPersonalId] = useState<number | null>(null)
+  // ドラッグ中にホバーしている日付。プレビュー表示の起点になる。
+  const [dragOverDate, setDragOverDate] = useState<Date | null>(null)
+
+  // ドロップ予測位置のセル日付集合。ホバー日と元タスクの期間から逆算する。
+  const previewCellKeys = useMemo(() => {
+    if (draggingPersonalId === null || dragOverDate === null) return new Set<string>()
+    const task = personalTasks.find((p) => p.id === draggingPersonalId)
+    if (!task || !task.dueDate) return new Set<string>()
+    const originalDue = toStartOfDay(new Date(task.dueDate))
+    const targetDay = toStartOfDay(dragOverDate)
+    const deltaMs = targetDay.getTime() - originalDue.getTime()
+    const originalStart = task.startDate
+      ? toStartOfDay(new Date(task.startDate))
+      : originalDue
+    const newStart = new Date(originalStart.getTime() + deltaMs)
+    const newEnd = targetDay
+    const keys = new Set<string>()
+    const cur = new Date(newStart)
+    while (cur.getTime() <= newEnd.getTime()) {
+      keys.add(toStartOfDay(cur).toISOString())
+      cur.setDate(cur.getDate() + 1)
+    }
+    return keys
+  }, [draggingPersonalId, dragOverDate, personalTasks])
+
+  const previewColor = useMemo(() => {
+    if (draggingPersonalId === null) return null
+    const task = personalTasks.find((p) => p.id === draggingPersonalId)
+    return task ? resolvePersonalTaskColor(task.color) : null
+  }, [draggingPersonalId, personalTasks])
 
   // 個人タスクの期限 (および開始日) を targetDate にスライドする。
   // 範囲タスクの場合は期間を維持したまま startDate / dueDate の両方をシフト。
@@ -280,18 +309,21 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
     const isToday = toStartOfDay(date).getTime() === today.getTime()
     const isWeekend = date.getDay() === 0 || date.getDay() === 6
     const isDragging = draggingPersonalId !== null
+    const isPreviewCell = isDragging && previewCellKeys.has(key)
 
     return (
       <div
         key={key}
-        className={`border-r border-b border-gray-100 p-1 min-h-[80px] transition-colors ${
+        className={`border-r border-b border-gray-100 p-1 min-h-[80px] transition-colors relative ${
           !isCurrentMonth ? 'bg-gray-50' : isWeekend ? 'bg-gray-50/50' : ''
-        } ${isDragging ? 'hover:bg-violet-50' : ''}`}
+        }`}
         onDragOver={
           isDragging
             ? (e): void => {
                 e.preventDefault()
                 e.dataTransfer.dropEffect = 'move'
+                // 同じセルでの mousemove では再計算しないようガード
+                if (dragOverDate?.getTime() !== date.getTime()) setDragOverDate(date)
               }
             : undefined
         }
@@ -302,10 +334,23 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
                 const id = Number(e.dataTransfer.getData('text/personal-task-id'))
                 if (id) void movePersonalTaskTo(id, date)
                 setDraggingPersonalId(null)
+                setDragOverDate(null)
               }
             : undefined
         }
       >
+        {isPreviewCell && previewColor && (
+          // ドロップ予測位置を半透明な帯で重ねる。
+          // dashed の枠で「これから置かれる場所」と示す。
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0.5 rounded border-2 border-dashed"
+            style={{
+              borderColor: previewColor,
+              backgroundColor: `${previewColor}15`
+            }}
+          />
+        )}
         <div className={`text-xs mb-1 ${
           isToday ? 'bg-amber-400 text-white w-5 h-5 rounded-full flex items-center justify-center font-bold' :
           !isCurrentMonth ? 'text-gray-300' :
@@ -346,7 +391,14 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
                       }
                     : undefined
                 }
-                onDragEnd={draggable ? (): void => setDraggingPersonalId(null) : undefined}
+                onDragEnd={
+                  draggable
+                    ? (): void => {
+                        setDraggingPersonalId(null)
+                        setDragOverDate(null)
+                      }
+                    : undefined
+                }
                 className={`text-[10px] ${paddingClass} py-0.5 ${roundedClass} truncate transition-opacity min-h-[14px] ${
                   clickable ? 'cursor-pointer hover:opacity-80' : ''
                 } ${draggable ? 'cursor-grab active:cursor-grabbing' : ''} ${

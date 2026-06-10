@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react'
-import { X } from 'lucide-react'
+import { X, Check } from 'lucide-react'
 import type { PersonalTask, PersonalTaskInput, Space, Task } from '../types/Task'
 import BacklogTaskPicker from './BacklogTaskPicker'
+import {
+  DEFAULT_PERSONAL_TASK_COLOR,
+  PERSONAL_TASK_COLORS,
+  resolvePersonalTaskColor
+} from '../utils/personalTaskColor'
 
 interface PersonalTaskFormProps {
   open: boolean
@@ -40,6 +45,7 @@ export default function PersonalTaskForm({
   const [dueDate, setDueDate] = useState('')
   const [estimatedHours, setEstimatedHours] = useState('')
   const [parentId, setParentId] = useState<number | null>(null)
+  const [color, setColor] = useState<string>(DEFAULT_PERSONAL_TASK_COLOR)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -53,6 +59,7 @@ export default function PersonalTaskForm({
       initial?.estimatedHours && initial.estimatedHours > 0 ? String(initial.estimatedHours) : ''
     )
     setParentId(initial?.parentBacklogTaskId ?? null)
+    setColor(resolvePersonalTaskColor(initial?.color ?? null))
     setError(null)
   }, [open, initial])
 
@@ -83,7 +90,8 @@ export default function PersonalTaskForm({
       startDate: startDate || null,
       dueDate: dueDate || null,
       estimatedHours: estimatedHours === '' ? 0 : parsedHours,
-      parentBacklogTaskId: parentId
+      parentBacklogTaskId: parentId,
+      color
     }
     const ok = await onSubmit(input)
     setSubmitting(false)
@@ -169,6 +177,30 @@ export default function PersonalTaskForm({
                 onChange={(e) => setEstimatedHours(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
               />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">色</label>
+            <div className="flex flex-wrap gap-2">
+              {PERSONAL_TASK_COLORS.map((c) => {
+                const selected = color === c.value
+                return (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => setColor(c.value)}
+                    title={c.name}
+                    aria-label={c.name}
+                    className={`h-7 w-7 rounded-full flex items-center justify-center transition-transform ${
+                      selected ? 'scale-110 ring-2 ring-offset-2 ring-gray-400' : 'hover:scale-105'
+                    }`}
+                    style={{ backgroundColor: c.value }}
+                  >
+                    {selected && <Check size={14} className="text-white" />}
+                  </button>
+                )
+              })}
             </div>
           </div>
 

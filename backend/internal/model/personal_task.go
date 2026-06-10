@@ -11,6 +11,8 @@ type PersonalTask struct {
 	Description         string     `json:"description"`
 	StartDate           *time.Time `json:"startDate"`
 	DueDate             *time.Time `json:"dueDate"`
+	// Color はカレンダー/ガントでの表示色 (#RRGGBB)。空文字のときはフロント側でデフォルトを使う。
+	Color string `gorm:"size:7;default:''" json:"color"`
 	EstimatedHours      float64    `gorm:"default:0" json:"estimatedHours"`
 	IsCompleted         bool       `gorm:"default:false;index" json:"isCompleted"`
 	CompletedAt         *time.Time `json:"completedAt"`

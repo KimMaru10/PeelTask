@@ -42,6 +42,7 @@ type personalTaskRequest struct {
 	ParentBacklogTaskID *uint    `json:"parentBacklogTaskId"`
 	IsCompleted         *bool    `json:"isCompleted"`
 	OrderIndex          *int     `json:"orderIndex"`
+	Color               *string  `json:"color"`
 }
 
 // List は個人タスクを一覧で返す。クエリパラメータ:
@@ -196,6 +197,20 @@ func parsePersonalTaskID(c echo.Context) (uint64, error) {
 	return id, nil
 }
 
+// isHexColor は #RRGGBB 形式 (英大小区別なし) を判定する。
+func isHexColor(s string) bool {
+	if len(s) != 7 || s[0] != '#' {
+		return false
+	}
+	for i := 1; i < 7; i++ {
+		c := s[i]
+		if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') && !(c >= 'A' && c <= 'F') {
+			return false
+		}
+	}
+	return true
+}
+
 // parseDateOrNull は空文字を nil として扱い、RFC3339 か "YYYY-MM-DD" を受け付ける。
 // "YYYY-MM-DD" は UTC 0:00 として解釈し、クライアント側のタイムゾーン解釈と揃える。
 func parseDateOrNull(s string) (*time.Time, error) {
@@ -262,6 +277,18 @@ func applyPersonalTaskUpdates(task *model.PersonalTask, req personalTaskRequest,
 
 	if req.OrderIndex != nil {
 		task.OrderIndex = *req.OrderIndex
+	}
+
+	if req.Color != nil {
+		c := strings.TrimSpace(*req.Color)
+		// 空文字はクリア。それ以外は #RRGGBB 形式のみ受け付ける。
+		if c == "" {
+			task.Color = ""
+		} else if !isHexColor(c) {
+			return errors.New("color must be in #RRGGBB format")
+		} else {
+			task.Color = strings.ToLower(c)
+		}
 	}
 
 	if req.IsCompleted != nil {
