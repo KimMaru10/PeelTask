@@ -407,7 +407,7 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
                       }
                     : undefined
                 }
-                className={`text-[10px] ${paddingClass} py-0.5 ${roundedClass} truncate transition-opacity min-h-[14px] ${
+                className={`text-[10px] leading-none flex items-center ${paddingClass} ${roundedClass} truncate transition-opacity h-[18px] ${
                   clickable ? 'cursor-pointer hover:opacity-80' : ''
                 } ${draggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
                   draggingPersonalId === item.id ? 'opacity-40' : ''
