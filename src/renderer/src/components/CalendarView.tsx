@@ -201,20 +201,26 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
   const [draggingPersonalId, setDraggingPersonalId] = useState<number | null>(null)
   // ドラッグ中にホバーしている日付。プレビュー表示の起点になる。
   const [dragOverDate, setDragOverDate] = useState<Date | null>(null)
+  // ドラッグを開始したセルの日付。「掴んだ日 → 指した日」のシフト量計算に使う。
+  // これにより、複数日タスクをどの日のセルから掴んでも、その掴んだ日付がカーソル位置に追従する。
+  const [draggingFromDate, setDraggingFromDate] = useState<Date | null>(null)
 
-  // ドロップ予測位置のセル日付集合。ホバー日と元タスクの期間から逆算する。
+  // ドロップ予測位置のセル日付集合。
+  // 「掴んだ日 → カーソル位置」のシフト量を期間全体に適用する (= grab point follows cursor)。
+  // 掴んだ日が分からない場合は dueDate を基点にフォールバック。
   const previewCellKeys = useMemo(() => {
     if (draggingPersonalId === null || dragOverDate === null) return new Set<string>()
     const task = personalTasks.find((p) => p.id === draggingPersonalId)
     if (!task || !task.dueDate) return new Set<string>()
     const originalDue = toStartOfDay(new Date(task.dueDate))
-    const targetDay = toStartOfDay(dragOverDate)
-    const deltaMs = targetDay.getTime() - originalDue.getTime()
     const originalStart = task.startDate
       ? toStartOfDay(new Date(task.startDate))
       : originalDue
+    const anchor = draggingFromDate ? toStartOfDay(draggingFromDate) : originalDue
+    const targetDay = toStartOfDay(dragOverDate)
+    const deltaMs = targetDay.getTime() - anchor.getTime()
     const newStart = new Date(originalStart.getTime() + deltaMs)
-    const newEnd = targetDay
+    const newEnd = new Date(originalDue.getTime() + deltaMs)
     const keys = new Set<string>()
     const cur = new Date(newStart)
     while (cur.getTime() <= newEnd.getTime()) {
@@ -222,7 +228,7 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
       cur.setDate(cur.getDate() + 1)
     }
     return keys
-  }, [draggingPersonalId, dragOverDate, personalTasks])
+  }, [draggingPersonalId, dragOverDate, draggingFromDate, personalTasks])
 
   const previewColor = useMemo(() => {
     if (draggingPersonalId === null) return null
@@ -230,38 +236,36 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
     return task ? resolvePersonalTaskColor(task.color) : null
   }, [draggingPersonalId, personalTasks])
 
-  // 個人タスクの期限 (および開始日) を targetDate にスライドする。
-  // 範囲タスクの場合は期間を維持したまま startDate / dueDate の両方をシフト。
-  // 期間なしタスクは従来通り dueDate のみ更新。
+  // 個人タスクの期間を targetDate にスライドする。
+  // 「掴んだ日 → targetDate」のシフト量を全期間に適用し、grab point が cursor 位置に追従する形にする。
+  // 掴んだ日が不明の場合は dueDate を基点にフォールバック。
   // 楽観的更新でローカル state を即時書き換え、失敗時は元の値に戻す。
-  const movePersonalTaskTo = async (taskId: number, targetDate: Date): Promise<void> => {
+  const movePersonalTaskTo = async (
+    taskId: number,
+    targetDate: Date,
+    grabDate: Date | null
+  ): Promise<void> => {
     const target = personalTasks.find((p) => p.id === taskId)
-    if (!target) return
+    if (!target || !target.dueDate) return
     const targetDay = toStartOfDay(targetDate)
-    const targetIso = targetDay.toISOString()
 
     const originalDue = target.dueDate
     const originalStart = target.startDate
+    const originalDueDay = toStartOfDay(new Date(originalDue))
+    const anchorDay = grabDate ? toStartOfDay(grabDate) : originalDueDay
+    const deltaMs = targetDay.getTime() - anchorDay.getTime()
 
-    // 期間あり (startDate と dueDate 両方) の場合は dueDate を target にして、startDate を同じ delta だけスライド。
+    const shiftedDue = new Date(originalDueDay.getTime() + deltaMs)
+    const nextDue = toStartOfDay(shiftedDue).toISOString()
     let nextStart = originalStart
-    let nextDue = targetIso
-    if (originalStart && originalDue) {
-      const originalDueDay = toStartOfDay(new Date(originalDue))
+    if (originalStart) {
       const originalStartDay = toStartOfDay(new Date(originalStart))
-      const deltaMs = targetDay.getTime() - originalDueDay.getTime()
-      const shifted = new Date(originalStartDay.getTime() + deltaMs)
-      nextStart = toStartOfDay(shifted).toISOString()
+      const shiftedStart = new Date(originalStartDay.getTime() + deltaMs)
+      nextStart = toStartOfDay(shiftedStart).toISOString()
     }
 
-    // 既に同じ位置なら何もしない
-    if (
-      originalDue &&
-      toStartOfDay(new Date(originalDue)).toISOString() === targetIso &&
-      nextStart === originalStart
-    ) {
-      return
-    }
+    // delta が 0 → 何も変わらない
+    if (deltaMs === 0) return
 
     setPersonalTasks((prev) =>
       prev.map((p) => (p.id === taskId ? { ...p, startDate: nextStart, dueDate: nextDue } : p))
@@ -332,9 +336,10 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
             ? (e): void => {
                 e.preventDefault()
                 const id = Number(e.dataTransfer.getData('text/personal-task-id'))
-                if (id) void movePersonalTaskTo(id, date)
+                if (id) void movePersonalTaskTo(id, date, draggingFromDate)
                 setDraggingPersonalId(null)
                 setDragOverDate(null)
+                setDraggingFromDate(null)
               }
             : undefined
         }
@@ -388,6 +393,8 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
                         e.dataTransfer.setData('text/personal-task-id', String(item.id))
                         e.dataTransfer.effectAllowed = 'move'
                         setDraggingPersonalId(item.id)
+                        // 「掴んだ日」を覚えておき、grab point がカーソルを追従するようにする。
+                        setDraggingFromDate(toStartOfDay(date))
                       }
                     : undefined
                 }
@@ -396,6 +403,7 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
                     ? (): void => {
                         setDraggingPersonalId(null)
                         setDragOverDate(null)
+                        setDraggingFromDate(null)
                       }
                     : undefined
                 }
