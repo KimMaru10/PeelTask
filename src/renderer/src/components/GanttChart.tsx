@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ClipboardList } from 'lucide-react'
 import type { PersonalTask, Space, Task } from '../types/Task'
@@ -117,9 +117,26 @@ function buildRows(
   return [...taskRows, ...personalRows]
 }
 
+interface DragState {
+  personalTaskId: number
+  startClientX: number
+  dxPx: number
+  originalDueDate: string | null
+}
+
 export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Element {
   const navigate = useNavigate()
   const [personalTasks, setPersonalTasks] = useState<PersonalTask[]>([])
+  // ドラッグ状態は state + ref の二重管理:
+  // - state は UI 反映用 (mousemove で再レンダリングして translate を更新)
+  // - ref は useEffect 内のリスナーで「常に最新の startClientX」を取り出すため
+  //   (closure の stale 値参照問題を避ける)
+  const [drag, setDrag] = useState<DragState | null>(null)
+  const dragRef = useRef<DragState | null>(null)
+  const updateDrag = (val: DragState | null): void => {
+    dragRef.current = val
+    setDrag(val)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -137,6 +154,65 @@ export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Elem
       cancelled = true
     }
   }, [])
+
+  // ドラッグ中は window で mousemove/mouseup を拾う。
+  // バー自身が小さく動くため、要素を外れてもドラッグが切れないようにする。
+  // closure stale を避けるため、リスナーは dragRef.current を参照する。
+  useEffect(() => {
+    if (!drag) return
+    const onMove = (e: MouseEvent): void => {
+      const cur = dragRef.current
+      if (!cur) return
+      updateDrag({ ...cur, dxPx: e.clientX - cur.startClientX })
+    }
+    const onUp = (e: MouseEvent): void => {
+      const cur = dragRef.current
+      if (!cur) return
+      const finalDx = e.clientX - cur.startClientX
+      const daysDelta = Math.round(finalDx / DAY_WIDTH)
+      finishDragPersonalTask(cur, daysDelta)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return (): void => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [drag?.personalTaskId])
+
+  const finishDragPersonalTask = async (state: DragState, daysDelta: number): Promise<void> => {
+    updateDrag(null)
+    if (daysDelta === 0 || !state.originalDueDate) return
+    const original = new Date(state.originalDueDate)
+    if (isNaN(original.getTime())) return
+    const next = new Date(original)
+    next.setDate(next.getDate() + daysDelta)
+    const nextIso = toStartOfDay(next).toISOString()
+    const targetTask = personalTasks.find((p) => p.id === state.personalTaskId)
+    if (!targetTask) return
+
+    // 楽観的更新
+    setPersonalTasks((prev) =>
+      prev.map((p) => (p.id === state.personalTaskId ? { ...p, dueDate: nextIso } : p))
+    )
+    try {
+      const res = await fetch(
+        `${backendUrl()}/api/personal-tasks/${state.personalTaskId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: targetTask.title, dueDate: nextIso })
+        }
+      )
+      if (!res.ok) throw new Error('failed')
+    } catch {
+      setPersonalTasks((prev) =>
+        prev.map((p) =>
+          p.id === state.personalTaskId ? { ...p, dueDate: state.originalDueDate } : p
+        )
+      )
+    }
+  }
 
   const today = useMemo(() => toStartOfDay(new Date()), [])
 
@@ -243,20 +319,48 @@ export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Elem
                       className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10"
                       style={{ left: `${DAY_WIDTH / 2}px` }}
                     />
-                    <div
-                      className="absolute top-1.5 rounded-md flex items-center px-2 overflow-hidden"
-                      style={{
-                        left: `${barStart}px`,
-                        width: `${Math.max(barWidth, 20)}px`,
-                        height: `${ROW_HEIGHT - 12}px`,
-                        backgroundColor: row.color,
-                        opacity: row.opacity
-                      }}
-                    >
-                      <span className="text-[10px] text-white font-medium truncate drop-shadow-sm">
-                        {row.estimatedHours > 0 ? `${row.estimatedHours}h` : ''}
-                      </span>
-                    </div>
+                    {(() => {
+                      const isDragging = drag?.personalTaskId === row.id
+                      // ドラッグ中はピクセル単位で追随、最終的に日境界へスナップ。
+                      const dxPx = isDragging
+                        ? Math.round(drag.dxPx / DAY_WIDTH) * DAY_WIDTH
+                        : 0
+                      const draggable = row.kind === 'personal'
+                      return (
+                        <div
+                          className={`absolute top-1.5 rounded-md flex items-center px-2 overflow-hidden select-none ${
+                            draggable ? 'cursor-grab active:cursor-grabbing' : ''
+                          }`}
+                          style={{
+                            left: `${barStart + dxPx}px`,
+                            width: `${Math.max(barWidth, 20)}px`,
+                            height: `${ROW_HEIGHT - 12}px`,
+                            backgroundColor: row.color,
+                            opacity: isDragging ? 1 : row.opacity,
+                            boxShadow: isDragging ? '0 4px 12px rgba(0,0,0,0.2)' : undefined
+                          }}
+                          onMouseDown={
+                            draggable
+                              ? (e): void => {
+                                  e.stopPropagation()
+                                  updateDrag({
+                                    personalTaskId: row.id,
+                                    startClientX: e.clientX,
+                                    dxPx: 0,
+                                    originalDueDate:
+                                      personalTasks.find((p) => p.id === row.id)?.dueDate ?? null
+                                  })
+                                }
+                              : undefined
+                          }
+                          title={draggable ? 'ドラッグして期限を変更' : undefined}
+                        >
+                          <span className="text-[10px] text-white font-medium truncate drop-shadow-sm">
+                            {row.estimatedHours > 0 ? `${row.estimatedHours}h` : ''}
+                          </span>
+                        </div>
+                      )
+                    })()}
                   </div>
                 </div>
               )

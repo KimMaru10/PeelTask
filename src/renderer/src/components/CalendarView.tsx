@@ -152,6 +152,37 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
 
   const goToday = (): void => setBaseDate(new Date())
 
+  // ドラッグ中の個人タスク ID。null のときはドラッグ中でない。
+  const [draggingPersonalId, setDraggingPersonalId] = useState<number | null>(null)
+
+  // 個人タスクの期限を targetDate に変更する。
+  // 楽観的更新でローカル state を即時書き換え、失敗時は元の値に戻す。
+  const movePersonalTaskTo = async (taskId: number, targetDate: Date): Promise<void> => {
+    const target = personalTasks.find((p) => p.id === taskId)
+    if (!target) return
+    const targetIso = toStartOfDay(targetDate).toISOString()
+    // 既に同じ日付なら何もしない
+    if (target.dueDate && toStartOfDay(new Date(target.dueDate)).toISOString() === targetIso) {
+      return
+    }
+    const original = target.dueDate
+    setPersonalTasks((prev) =>
+      prev.map((p) => (p.id === taskId ? { ...p, dueDate: targetIso } : p))
+    )
+    try {
+      const res = await fetch(`${backendUrl()}/api/personal-tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: target.title, dueDate: targetIso })
+      })
+      if (!res.ok) throw new Error('failed')
+    } catch {
+      setPersonalTasks((prev) =>
+        prev.map((p) => (p.id === taskId ? { ...p, dueDate: original } : p))
+      )
+    }
+  }
+
   const headerLabel = mode === 'week'
     ? (() => {
         const dates = getWeekDates(baseDate)
@@ -164,13 +195,32 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
     const dayItems = itemsByDate.get(key) ?? []
     const isToday = toStartOfDay(date).getTime() === today.getTime()
     const isWeekend = date.getDay() === 0 || date.getDay() === 6
+    const isDragging = draggingPersonalId !== null
 
     return (
       <div
         key={key}
-        className={`border-r border-b border-gray-100 p-1 min-h-[80px] ${
+        className={`border-r border-b border-gray-100 p-1 min-h-[80px] transition-colors ${
           !isCurrentMonth ? 'bg-gray-50' : isWeekend ? 'bg-gray-50/50' : ''
-        }`}
+        } ${isDragging ? 'hover:bg-violet-50' : ''}`}
+        onDragOver={
+          isDragging
+            ? (e): void => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+              }
+            : undefined
+        }
+        onDrop={
+          isDragging
+            ? (e): void => {
+                e.preventDefault()
+                const id = Number(e.dataTransfer.getData('text/personal-task-id'))
+                if (id) void movePersonalTaskTo(id, date)
+                setDraggingPersonalId(null)
+              }
+            : undefined
+        }
       >
         <div className={`text-xs mb-1 ${
           isToday ? 'bg-amber-400 text-white w-5 h-5 rounded-full flex items-center justify-center font-bold' :
@@ -182,17 +232,35 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
         <div className="space-y-0.5">
           {dayItems.slice(0, 3).map((item) => {
             const clickable = item.kind === 'task'
+            const draggable = item.kind === 'personal'
             return (
               <div
                 key={`${item.kind}-${item.id}`}
+                draggable={draggable}
+                onDragStart={
+                  draggable
+                    ? (e): void => {
+                        e.dataTransfer.setData('text/personal-task-id', String(item.id))
+                        e.dataTransfer.effectAllowed = 'move'
+                        setDraggingPersonalId(item.id)
+                      }
+                    : undefined
+                }
+                onDragEnd={draggable ? (): void => setDraggingPersonalId(null) : undefined}
                 className={`text-[10px] px-1 py-0.5 rounded truncate transition-opacity ${
                   clickable ? 'cursor-pointer hover:opacity-80' : ''
+                } ${draggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                  draggingPersonalId === item.id ? 'opacity-40' : ''
                 }`}
                 style={{ backgroundColor: `${item.color}40`, color: item.color }}
                 onClick={
                   clickable ? () => navigate(`/tasks/${item.id}`) : undefined
                 }
-                title={item.title}
+                title={
+                  draggable
+                    ? `${item.title} (ドラッグして期限変更)`
+                    : item.title
+                }
               >
                 {item.badge} {item.title}
               </div>
