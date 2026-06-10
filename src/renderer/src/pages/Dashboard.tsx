@@ -252,7 +252,15 @@ function Dashboard(): JSX.Element {
         </div>
       ) : assigneeMode === 'personal' ? (
         <div key={slideKey} className={slideDir === 'right' ? 'tab-slide-right' : 'tab-slide-left'}>
-          <PersonalTasksView backlogTasks={tasks} spaces={spaces} />
+          {viewMode === 'list' ? (
+            <PersonalTasksView backlogTasks={tasks} spaces={spaces} />
+          ) : viewMode === 'gantt' ? (
+            // GanttChart は personal タスクを内部 fetch する。tasks=[] で「個人タスクのみ」のガントになる。
+            <GanttChart tasks={[]} spaces={spaces} />
+          ) : (
+            // CalendarView も personal タスクを内部 fetch する。
+            <CalendarView tasks={[]} spaces={spaces} />
+          )}
         </div>
       ) : loadedMode !== assigneeMode ? (
         // 取得中の tasks がまだ前タブのものなので、見た目を出さずプレースホルダーで埋める。

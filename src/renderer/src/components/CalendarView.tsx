@@ -1,8 +1,25 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Task, Space } from '../types/Task'
+import type { Task, PersonalTask, Space } from '../types/Task'
+
+function backendUrl(): string {
+  return window.api?.getBackendUrl?.() ?? 'http://localhost:8080'
+}
 
 type CalendarMode = 'week' | 'month'
+
+const PERSONAL_TASK_COLOR = '#7C3AED' // violet-600
+
+// 個人タスクは Backlog タスクと同じセル上で並べたいので、共通の表示用構造に集約する。
+interface CalendarItem {
+  kind: 'task' | 'personal'
+  id: number
+  title: string
+  color: string
+  dueDate: string | null
+  // ホバー時の補足表示用
+  badge: string | null
+}
 
 interface CalendarViewProps {
   tasks: Task[]
@@ -60,22 +77,64 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
   const navigate = useNavigate()
   const [mode, setMode] = useState<CalendarMode>('month')
   const [baseDate, setBaseDate] = useState(() => new Date())
+  const [personalTasks, setPersonalTasks] = useState<PersonalTask[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    void (async (): Promise<void> => {
+      try {
+        const res = await fetch(`${backendUrl()}/api/personal-tasks?completed=false`)
+        if (!res.ok) return
+        const data = (await res.json()) as PersonalTask[]
+        if (!cancelled) setPersonalTasks(Array.isArray(data) ? data : [])
+      } catch {
+        // カレンダー上の補助表示なので失敗しても致命的でない
+      }
+    })()
+    return (): void => {
+      cancelled = true
+    }
+  }, [])
 
   const today = useMemo(() => toStartOfDay(new Date()), [])
 
-  const tasksByDate = useMemo(() => {
-    const map = new Map<string, Task[]>()
+  const itemsByDate = useMemo(() => {
+    const map = new Map<string, CalendarItem[]>()
+    const push = (key: string, item: CalendarItem): void => {
+      const existing = map.get(key) ?? []
+      existing.push(item)
+      map.set(key, existing)
+    }
     for (const task of tasks) {
       if (!task.dueDate) continue
       const date = new Date(task.dueDate)
       if (isNaN(date.getTime())) continue
       const key = toStartOfDay(date).toISOString()
-      const existing = map.get(key) ?? []
-      existing.push(task)
-      map.set(key, existing)
+      push(key, {
+        kind: 'task',
+        id: task.id,
+        title: task.title,
+        color: getSpaceColor(task.spaceId, spaces),
+        dueDate: task.dueDate,
+        badge: task.issueKey.split('-').pop() ?? task.issueKey
+      })
+    }
+    for (const p of personalTasks) {
+      if (p.isCompleted || !p.dueDate) continue
+      const date = new Date(p.dueDate)
+      if (isNaN(date.getTime())) continue
+      const key = toStartOfDay(date).toISOString()
+      push(key, {
+        kind: 'personal',
+        id: p.id,
+        title: p.title,
+        color: PERSONAL_TASK_COLOR,
+        dueDate: p.dueDate,
+        badge: '📋'
+      })
     }
     return map
-  }, [tasks])
+  }, [tasks, personalTasks, spaces])
 
   const navigatePrev = (): void => {
     const d = new Date(baseDate)
@@ -102,7 +161,7 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
 
   const renderDayCell = (date: Date, isCurrentMonth: boolean = true): JSX.Element => {
     const key = toStartOfDay(date).toISOString()
-    const dayTasks = tasksByDate.get(key) ?? []
+    const dayItems = itemsByDate.get(key) ?? []
     const isToday = toStartOfDay(date).getTime() === today.getTime()
     const isWeekend = date.getDay() === 0 || date.getDay() === 6
 
@@ -121,19 +180,26 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
           {date.getDate()}
         </div>
         <div className="space-y-0.5">
-          {dayTasks.slice(0, 3).map((task) => (
-            <div
-              key={task.id}
-              className="text-[10px] px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity"
-              style={{ backgroundColor: `${getSpaceColor(task.spaceId, spaces)}40`, color: getSpaceColor(task.spaceId, spaces) }}
-              onClick={() => navigate(`/tasks/${task.id}`)}
-              title={`${task.issueKey}: ${task.title}`}
-            >
-              {task.issueKey.split('-').pop()} {task.title}
-            </div>
-          ))}
-          {dayTasks.length > 3 && (
-            <div className="text-[10px] text-gray-400 px-1">+{dayTasks.length - 3}件</div>
+          {dayItems.slice(0, 3).map((item) => {
+            const clickable = item.kind === 'task'
+            return (
+              <div
+                key={`${item.kind}-${item.id}`}
+                className={`text-[10px] px-1 py-0.5 rounded truncate transition-opacity ${
+                  clickable ? 'cursor-pointer hover:opacity-80' : ''
+                }`}
+                style={{ backgroundColor: `${item.color}40`, color: item.color }}
+                onClick={
+                  clickable ? () => navigate(`/tasks/${item.id}`) : undefined
+                }
+                title={item.title}
+              >
+                {item.badge} {item.title}
+              </div>
+            )
+          })}
+          {dayItems.length > 3 && (
+            <div className="text-[10px] text-gray-400 px-1">+{dayItems.length - 3}件</div>
           )}
         </div>
       </div>
