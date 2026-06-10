@@ -36,6 +36,7 @@ func (h *PersonalTaskHandler) write(fn store.WriteFunc) error {
 type personalTaskRequest struct {
 	Title               *string  `json:"title"`
 	Description         *string  `json:"description"`
+	StartDate           *string  `json:"startDate"`
 	DueDate             *string  `json:"dueDate"`
 	EstimatedHours      *float64 `json:"estimatedHours"`
 	ParentBacklogTaskID *uint    `json:"parentBacklogTaskId"`
@@ -195,6 +196,22 @@ func parsePersonalTaskID(c echo.Context) (uint64, error) {
 	return id, nil
 }
 
+// parseDateOrNull は空文字を nil として扱い、RFC3339 か "YYYY-MM-DD" を受け付ける。
+// "YYYY-MM-DD" は UTC 0:00 として解釈し、クライアント側のタイムゾーン解釈と揃える。
+func parseDateOrNull(s string) (*time.Time, error) {
+	if s == "" {
+		return nil, nil
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return &t, nil
+	}
+	t, err := time.ParseInLocation("2006-01-02", s, time.UTC)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 // applyPersonalTaskUpdates は request 内の non-nil フィールドのみを task に反映する。
 // is_completed は新規作成時は無条件に completed_at を同期、更新時は値が変化した場合のみ同期する。
 func applyPersonalTaskUpdates(task *model.PersonalTask, req personalTaskRequest, isCreate bool) error {
@@ -206,20 +223,25 @@ func applyPersonalTaskUpdates(task *model.PersonalTask, req personalTaskRequest,
 		task.Description = desc
 	}
 
-	if req.DueDate != nil {
-		if *req.DueDate == "" {
-			task.DueDate = nil
-		} else {
-			parsed, err := time.Parse(time.RFC3339, *req.DueDate)
-			if err != nil {
-				// 日付のみ "YYYY-MM-DD" もフォールバックで受ける。
-				parsed, err = time.Parse("2006-01-02", *req.DueDate)
-				if err != nil {
-					return errors.New("invalid dueDate format")
-				}
-			}
-			task.DueDate = &parsed
+	if req.StartDate != nil {
+		parsed, err := parseDateOrNull(*req.StartDate)
+		if err != nil {
+			return errors.New("invalid startDate format")
 		}
+		task.StartDate = parsed
+	}
+
+	if req.DueDate != nil {
+		parsed, err := parseDateOrNull(*req.DueDate)
+		if err != nil {
+			return errors.New("invalid dueDate format")
+		}
+		task.DueDate = parsed
+	}
+
+	// startDate と dueDate が両方セットされている場合、startDate <= dueDate を保証する。
+	if task.StartDate != nil && task.DueDate != nil && task.DueDate.Before(*task.StartDate) {
+		return errors.New("dueDate must be on or after startDate")
 	}
 
 	if req.EstimatedHours != nil {

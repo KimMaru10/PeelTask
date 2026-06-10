@@ -10,6 +10,8 @@ type CalendarMode = 'week' | 'month'
 
 const PERSONAL_TASK_COLOR = '#7C3AED' // violet-600
 
+type SpanPosition = 'single' | 'start' | 'middle' | 'end'
+
 // 個人タスクは Backlog タスクと同じセル上で並べたいので、共通の表示用構造に集約する。
 interface CalendarItem {
   kind: 'task' | 'personal'
@@ -19,6 +21,8 @@ interface CalendarItem {
   dueDate: string | null
   // ホバー時の補足表示用
   badge: string | null
+  // 期間ありの個人タスクが連続セルに帯描画されるときの位置。Backlog タスクは常に 'single'。
+  spanPosition: SpanPosition
 }
 
 interface CalendarViewProps {
@@ -116,22 +120,52 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
         title: task.title,
         color: getSpaceColor(task.spaceId, spaces),
         dueDate: task.dueDate,
-        badge: task.issueKey.split('-').pop() ?? task.issueKey
+        badge: task.issueKey.split('-').pop() ?? task.issueKey,
+        spanPosition: 'single'
       })
     }
     for (const p of personalTasks) {
       if (p.isCompleted || !p.dueDate) continue
-      const date = new Date(p.dueDate)
-      if (isNaN(date.getTime())) continue
-      const key = toStartOfDay(date).toISOString()
-      push(key, {
-        kind: 'personal',
-        id: p.id,
-        title: p.title,
-        color: PERSONAL_TASK_COLOR,
-        dueDate: p.dueDate,
-        badge: '📋'
-      })
+      const due = new Date(p.dueDate)
+      if (isNaN(due.getTime())) continue
+      const dueDay = toStartOfDay(due)
+      const startCandidate = p.startDate ? new Date(p.startDate) : null
+      const start =
+        startCandidate && !isNaN(startCandidate.getTime())
+          ? toStartOfDay(startCandidate)
+          : null
+
+      if (!start || start.getTime() >= dueDay.getTime()) {
+        // 開始日なし or 開始 = 期限 → 期限セルだけに 1 つ表示
+        push(dueDay.toISOString(), {
+          kind: 'personal',
+          id: p.id,
+          title: p.title,
+          color: PERSONAL_TASK_COLOR,
+          dueDate: p.dueDate,
+          badge: '📋',
+          spanPosition: 'single'
+        })
+        continue
+      }
+
+      // 開始 < 期限 → 全ての日に帯としてプッシュ
+      const cur = new Date(start)
+      while (cur.getTime() <= dueDay.getTime()) {
+        const isStart = cur.getTime() === start.getTime()
+        const isEnd = cur.getTime() === dueDay.getTime()
+        const pos: SpanPosition = isStart ? 'start' : isEnd ? 'end' : 'middle'
+        push(cur.toISOString(), {
+          kind: 'personal',
+          id: p.id,
+          title: p.title,
+          color: PERSONAL_TASK_COLOR,
+          dueDate: p.dueDate,
+          badge: isStart ? '📋' : '',
+          spanPosition: pos
+        })
+        cur.setDate(cur.getDate() + 1)
+      }
     }
     return map
   }, [tasks, personalTasks, spaces])
@@ -155,30 +189,61 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
   // ドラッグ中の個人タスク ID。null のときはドラッグ中でない。
   const [draggingPersonalId, setDraggingPersonalId] = useState<number | null>(null)
 
-  // 個人タスクの期限を targetDate に変更する。
+  // 個人タスクの期限 (および開始日) を targetDate にスライドする。
+  // 範囲タスクの場合は期間を維持したまま startDate / dueDate の両方をシフト。
+  // 期間なしタスクは従来通り dueDate のみ更新。
   // 楽観的更新でローカル state を即時書き換え、失敗時は元の値に戻す。
   const movePersonalTaskTo = async (taskId: number, targetDate: Date): Promise<void> => {
     const target = personalTasks.find((p) => p.id === taskId)
     if (!target) return
-    const targetIso = toStartOfDay(targetDate).toISOString()
-    // 既に同じ日付なら何もしない
-    if (target.dueDate && toStartOfDay(new Date(target.dueDate)).toISOString() === targetIso) {
+    const targetDay = toStartOfDay(targetDate)
+    const targetIso = targetDay.toISOString()
+
+    const originalDue = target.dueDate
+    const originalStart = target.startDate
+
+    // 期間あり (startDate と dueDate 両方) の場合は dueDate を target にして、startDate を同じ delta だけスライド。
+    let nextStart = originalStart
+    let nextDue = targetIso
+    if (originalStart && originalDue) {
+      const originalDueDay = toStartOfDay(new Date(originalDue))
+      const originalStartDay = toStartOfDay(new Date(originalStart))
+      const deltaMs = targetDay.getTime() - originalDueDay.getTime()
+      const shifted = new Date(originalStartDay.getTime() + deltaMs)
+      nextStart = toStartOfDay(shifted).toISOString()
+    }
+
+    // 既に同じ位置なら何もしない
+    if (
+      originalDue &&
+      toStartOfDay(new Date(originalDue)).toISOString() === targetIso &&
+      nextStart === originalStart
+    ) {
       return
     }
-    const original = target.dueDate
+
     setPersonalTasks((prev) =>
-      prev.map((p) => (p.id === taskId ? { ...p, dueDate: targetIso } : p))
+      prev.map((p) => (p.id === taskId ? { ...p, startDate: nextStart, dueDate: nextDue } : p))
     )
     try {
+      const patch: { title: string; dueDate: string; startDate?: string | null } = {
+        title: target.title,
+        dueDate: nextDue
+      }
+      if (originalStart) patch.startDate = nextStart
       const res = await fetch(`${backendUrl()}/api/personal-tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: target.title, dueDate: targetIso })
+        body: JSON.stringify(patch)
       })
       if (!res.ok) throw new Error('failed')
     } catch {
       setPersonalTasks((prev) =>
-        prev.map((p) => (p.id === taskId ? { ...p, dueDate: original } : p))
+        prev.map((p) =>
+          p.id === taskId
+            ? { ...p, startDate: originalStart, dueDate: originalDue }
+            : p
+        )
       )
     }
   }
@@ -233,9 +298,20 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
           {dayItems.slice(0, 3).map((item) => {
             const clickable = item.kind === 'task'
             const draggable = item.kind === 'personal'
+            // 帯表示の角丸: 開始/終了でだけ角丸、中間は両端を直線にして連続感を出す。
+            const roundedClass =
+              item.spanPosition === 'single'
+                ? 'rounded'
+                : item.spanPosition === 'start'
+                  ? 'rounded-l'
+                  : item.spanPosition === 'end'
+                    ? 'rounded-r'
+                    : ''
+            // 中間セルでは左右に隙間を入れず帯が繋がって見えるよう、px-0 にする。
+            const paddingClass = item.spanPosition === 'middle' ? 'px-0' : 'px-1'
             return (
               <div
-                key={`${item.kind}-${item.id}`}
+                key={`${item.kind}-${item.id}-${item.spanPosition}`}
                 draggable={draggable}
                 onDragStart={
                   draggable
@@ -247,7 +323,7 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
                     : undefined
                 }
                 onDragEnd={draggable ? (): void => setDraggingPersonalId(null) : undefined}
-                className={`text-[10px] px-1 py-0.5 rounded truncate transition-opacity ${
+                className={`text-[10px] ${paddingClass} py-0.5 ${roundedClass} truncate transition-opacity ${
                   clickable ? 'cursor-pointer hover:opacity-80' : ''
                 } ${draggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
                   draggingPersonalId === item.id ? 'opacity-40' : ''

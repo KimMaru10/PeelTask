@@ -37,6 +37,7 @@ export interface PersonalTask {
   id: number
   title: string
   description: string
+  startDate: string | null
   dueDate: string | null
   estimatedHours: number
   isCompleted: boolean
@@ -50,6 +51,7 @@ export interface PersonalTask {
 export interface PersonalTaskInput {
   title: string
   description?: string
+  startDate?: string | null
   dueDate?: string | null
   estimatedHours?: number
   parentBacklogTaskId?: number | null

@@ -9,6 +9,7 @@ type PersonalTask struct {
 	ID                  uint       `gorm:"primaryKey" json:"id"`
 	Title               string     `gorm:"not null" json:"title"`
 	Description         string     `json:"description"`
+	StartDate           *time.Time `json:"startDate"`
 	DueDate             *time.Time `json:"dueDate"`
 	EstimatedHours      float64    `gorm:"default:0" json:"estimatedHours"`
 	IsCompleted         bool       `gorm:"default:false;index" json:"isCompleted"`

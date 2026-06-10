@@ -36,6 +36,7 @@ export default function PersonalTaskForm({
 }: PersonalTaskFormProps): JSX.Element | null {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [startDate, setStartDate] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [estimatedHours, setEstimatedHours] = useState('')
   const [parentId, setParentId] = useState<number | null>(null)
@@ -46,6 +47,7 @@ export default function PersonalTaskForm({
     if (!open) return
     setTitle(initial?.title ?? '')
     setDescription(initial?.description ?? '')
+    setStartDate(toDateInputValue(initial?.startDate ?? null))
     setDueDate(toDateInputValue(initial?.dueDate ?? null))
     setEstimatedHours(
       initial?.estimatedHours && initial.estimatedHours > 0 ? String(initial.estimatedHours) : ''
@@ -70,9 +72,15 @@ export default function PersonalTaskForm({
       setSubmitting(false)
       return
     }
+    if (startDate && dueDate && startDate > dueDate) {
+      setError('開始日は期限より後にできません')
+      setSubmitting(false)
+      return
+    }
     const input: PersonalTaskInput = {
       title: title.trim(),
       description: description.trim(),
+      startDate: startDate || null,
       dueDate: dueDate || null,
       estimatedHours: estimatedHours === '' ? 0 : parsedHours,
       parentBacklogTaskId: parentId
@@ -132,7 +140,16 @@ export default function PersonalTaskForm({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">開始日</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+              />
+            </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-600">期限</label>
               <input

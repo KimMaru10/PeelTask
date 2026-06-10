@@ -22,6 +22,7 @@ interface GanttRow {
   badge: string | null
   color: string
   opacity: number
+  startDate: Date | null
   dueDate: Date | null
   estimatedHours: number
   isCompleted: boolean
@@ -85,6 +86,8 @@ function buildRows(
       badge: t.issueKey,
       color: getSpaceColor(t.spaceId, spaces),
       opacity: getPriorityOpacity(t.priority),
+      // Backlog タスクは開始日を持たないので estimatedHours から逆算する形のまま。
+      startDate: null,
       dueDate: parseDate(t.dueDate),
       estimatedHours: t.estimatedHours,
       isCompleted: false
@@ -109,6 +112,7 @@ function buildRows(
       badge: null,
       color: PERSONAL_TASK_COLOR,
       opacity: 0.85,
+      startDate: parseDate(p.startDate),
       dueDate: parseDate(p.dueDate),
       estimatedHours: p.estimatedHours,
       isCompleted: p.isCompleted
@@ -117,10 +121,14 @@ function buildRows(
   return [...taskRows, ...personalRows]
 }
 
+type DragMode = 'move' | 'start' | 'end'
+
 interface DragState {
   personalTaskId: number
+  mode: DragMode
   startClientX: number
   dxPx: number
+  originalStartDate: string | null
   originalDueDate: string | null
 }
 
@@ -182,18 +190,56 @@ export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Elem
 
   const finishDragPersonalTask = async (state: DragState, daysDelta: number): Promise<void> => {
     updateDrag(null)
-    if (daysDelta === 0 || !state.originalDueDate) return
-    const original = new Date(state.originalDueDate)
-    if (isNaN(original.getTime())) return
-    const next = new Date(original)
-    next.setDate(next.getDate() + daysDelta)
-    const nextIso = toStartOfDay(next).toISOString()
+    if (daysDelta === 0) return
     const targetTask = personalTasks.find((p) => p.id === state.personalTaskId)
     if (!targetTask) return
 
+    const shiftIso = (iso: string | null): string | null => {
+      if (!iso) return null
+      const d = new Date(iso)
+      if (isNaN(d.getTime())) return iso
+      d.setDate(d.getDate() + daysDelta)
+      return toStartOfDay(d).toISOString()
+    }
+
+    // モードに応じて変更するフィールドを決め、不正な順序になる更新は捨てる。
+    let nextStart = targetTask.startDate
+    let nextDue = targetTask.dueDate
+    const patch: { startDate?: string | null; dueDate?: string | null; title: string } = {
+      title: targetTask.title
+    }
+    if (state.mode === 'move') {
+      nextStart = shiftIso(state.originalStartDate)
+      nextDue = shiftIso(state.originalDueDate)
+      patch.startDate = nextStart
+      patch.dueDate = nextDue
+    } else if (state.mode === 'start') {
+      nextStart = shiftIso(state.originalStartDate)
+      // dueDate を超えないようクランプ。
+      if (nextStart && nextDue && nextStart > nextDue) nextStart = nextDue
+      patch.startDate = nextStart
+    } else if (state.mode === 'end') {
+      nextDue = shiftIso(state.originalDueDate)
+      // startDate より前にならないようクランプ。
+      if (nextStart && nextDue && nextDue < nextStart) nextDue = nextStart
+      patch.dueDate = nextDue
+    }
+
+    // 変化が無ければ何もしない (クランプ等で元値と同じになるケース)
+    if (
+      nextStart === targetTask.startDate &&
+      nextDue === targetTask.dueDate
+    ) {
+      return
+    }
+
     // 楽観的更新
     setPersonalTasks((prev) =>
-      prev.map((p) => (p.id === state.personalTaskId ? { ...p, dueDate: nextIso } : p))
+      prev.map((p) =>
+        p.id === state.personalTaskId
+          ? { ...p, startDate: nextStart, dueDate: nextDue }
+          : p
+      )
     )
     try {
       const res = await fetch(
@@ -201,14 +247,20 @@ export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Elem
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: targetTask.title, dueDate: nextIso })
+          body: JSON.stringify(patch)
         }
       )
       if (!res.ok) throw new Error('failed')
     } catch {
       setPersonalTasks((prev) =>
         prev.map((p) =>
-          p.id === state.personalTaskId ? { ...p, dueDate: state.originalDueDate } : p
+          p.id === state.personalTaskId
+            ? {
+                ...p,
+                startDate: state.originalStartDate,
+                dueDate: state.originalDueDate
+              }
+            : p
         )
       )
     }
@@ -282,12 +334,25 @@ export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Elem
                 const daysUntilDue = Math.round(
                   (dueDateNorm.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
                 )
-                const estimatedDays = Math.max(
-                  Math.ceil(row.estimatedHours / HOURS_PER_DAY),
-                  1
-                )
-                barStart = Math.max((daysUntilDue - estimatedDays) * DAY_WIDTH, 0)
-                barWidth = Math.min(estimatedDays * DAY_WIDTH, totalWidth - barStart)
+                if (row.kind === 'personal' && row.startDate) {
+                  // 開始日 + 期限の両方が設定されているなら範囲そのままで描画。
+                  const startDateNorm = toStartOfDay(row.startDate)
+                  const startCol = Math.round(
+                    (startDateNorm.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+                  )
+                  // 終端 col は dueDate の翌日 (含まれる日全体を表示するため +1)
+                  const endCol = daysUntilDue + 1
+                  barStart = Math.max(startCol * DAY_WIDTH, 0)
+                  barWidth = Math.min((endCol - startCol) * DAY_WIDTH, totalWidth - barStart)
+                } else {
+                  // 開始日が無い場合は所要時間から逆算 (旧挙動)
+                  const estimatedDays = Math.max(
+                    Math.ceil(row.estimatedHours / HOURS_PER_DAY),
+                    1
+                  )
+                  barStart = Math.max((daysUntilDue - estimatedDays) * DAY_WIDTH, 0)
+                  barWidth = Math.min(estimatedDays * DAY_WIDTH, totalWidth - barStart)
+                }
               }
 
               return (
@@ -321,43 +386,89 @@ export default function GanttChart({ tasks, spaces }: GanttChartProps): JSX.Elem
                     />
                     {(() => {
                       const isDragging = drag?.personalTaskId === row.id
-                      // ドラッグ中はピクセル単位で追随、最終的に日境界へスナップ。
-                      const dxPx = isDragging
+                      const snapDx = isDragging
                         ? Math.round(drag.dxPx / DAY_WIDTH) * DAY_WIDTH
                         : 0
                       const draggable = row.kind === 'personal'
+
+                      // モード別の left / width 描画値を計算する。
+                      // - move: 左右まるごとシフト
+                      // - start: 左端のみ動かす → 左端 += snap、右端は固定 → width 縮む
+                      // - end: 右端のみ動かす → 左端は固定、width += snap
+                      let drawLeft = barStart
+                      let drawWidth = barWidth
+                      if (isDragging) {
+                        if (drag.mode === 'move') {
+                          drawLeft = barStart + snapDx
+                        } else if (drag.mode === 'start') {
+                          // 左ハンドルを右へ引きすぎても右端を超えないよう最低 1 日幅を確保。
+                          // 過剰に引いた場合は drawLeft 側も対応して詰める。
+                          const cappedSnap = Math.min(snapDx, barWidth - DAY_WIDTH)
+                          drawLeft = barStart + cappedSnap
+                          drawWidth = barWidth - cappedSnap
+                        } else if (drag.mode === 'end') {
+                          // 右ハンドルを左へ引きすぎても左端を超えないよう最低 1 日幅を確保。
+                          drawWidth = Math.max(barWidth + snapDx, DAY_WIDTH)
+                        }
+                      }
+
+                      const startDragHandler =
+                        (mode: DragMode) =>
+                        (e: React.MouseEvent): void => {
+                          e.stopPropagation()
+                          const pt = personalTasks.find((p) => p.id === row.id)
+                          updateDrag({
+                            personalTaskId: row.id,
+                            mode,
+                            startClientX: e.clientX,
+                            dxPx: 0,
+                            originalStartDate: pt?.startDate ?? null,
+                            originalDueDate: pt?.dueDate ?? null
+                          })
+                        }
+
+                      const hasRangeHandles = draggable && row.startDate !== null
+
                       return (
                         <div
-                          className={`absolute top-1.5 rounded-md flex items-center px-2 overflow-hidden select-none ${
-                            draggable ? 'cursor-grab active:cursor-grabbing' : ''
-                          }`}
+                          className="absolute top-1.5 rounded-md flex items-center overflow-hidden select-none"
                           style={{
-                            left: `${barStart + dxPx}px`,
-                            width: `${Math.max(barWidth, 20)}px`,
+                            left: `${drawLeft}px`,
+                            width: `${Math.max(drawWidth, 20)}px`,
                             height: `${ROW_HEIGHT - 12}px`,
                             backgroundColor: row.color,
                             opacity: isDragging ? 1 : row.opacity,
                             boxShadow: isDragging ? '0 4px 12px rgba(0,0,0,0.2)' : undefined
                           }}
-                          onMouseDown={
-                            draggable
-                              ? (e): void => {
-                                  e.stopPropagation()
-                                  updateDrag({
-                                    personalTaskId: row.id,
-                                    startClientX: e.clientX,
-                                    dxPx: 0,
-                                    originalDueDate:
-                                      personalTasks.find((p) => p.id === row.id)?.dueDate ?? null
-                                  })
-                                }
-                              : undefined
-                          }
-                          title={draggable ? 'ドラッグして期限を変更' : undefined}
+                          title={draggable ? 'ドラッグして期間を調整' : undefined}
                         >
-                          <span className="text-[10px] text-white font-medium truncate drop-shadow-sm">
-                            {row.estimatedHours > 0 ? `${row.estimatedHours}h` : ''}
-                          </span>
+                          {/* 左端ハンドル: 開始日のみシフト (startDate が無い課題はハンドルなし、本体ドラッグで期限のみ動く) */}
+                          {hasRangeHandles && (
+                            <div
+                              onMouseDown={startDragHandler('start')}
+                              className="h-full w-2 cursor-ew-resize shrink-0 bg-white/20"
+                              title="開始日を変更"
+                            />
+                          )}
+                          {/* 中央: 本体ドラッグ (move) */}
+                          <div
+                            onMouseDown={draggable ? startDragHandler('move') : undefined}
+                            className={`flex-1 h-full flex items-center px-2 ${
+                              draggable ? 'cursor-grab active:cursor-grabbing' : ''
+                            }`}
+                          >
+                            <span className="text-[10px] text-white font-medium truncate drop-shadow-sm">
+                              {row.estimatedHours > 0 ? `${row.estimatedHours}h` : ''}
+                            </span>
+                          </div>
+                          {/* 右端ハンドル: 期限のみシフト */}
+                          {draggable && (
+                            <div
+                              onMouseDown={startDragHandler('end')}
+                              className="h-full w-2 cursor-ew-resize shrink-0 bg-white/20"
+                              title="期限を変更"
+                            />
+                          )}
                         </div>
                       )
                     })()}
