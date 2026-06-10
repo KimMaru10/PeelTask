@@ -23,6 +23,9 @@ interface CalendarItem {
   badge: string | null
   // 期間ありの個人タスクが連続セルに帯描画されるときの位置。Backlog タスクは常に 'single'。
   spanPosition: SpanPosition
+  // 帯の中でタイトルを表示するか。開始日 / 月をまたいだ最初の日 / single は true、
+  // 中間日は false にして帯のみの表示にする (繰り返しを抑える)。
+  showLabel: boolean
 }
 
 interface CalendarViewProps {
@@ -121,7 +124,8 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
         color: getSpaceColor(task.spaceId, spaces),
         dueDate: task.dueDate,
         badge: task.issueKey.split('-').pop() ?? task.issueKey,
-        spanPosition: 'single'
+        spanPosition: 'single',
+        showLabel: true
       })
     }
     for (const p of personalTasks) {
@@ -144,26 +148,34 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
           color: PERSONAL_TASK_COLOR,
           dueDate: p.dueDate,
           badge: '📋',
-          spanPosition: 'single'
+          spanPosition: 'single',
+          showLabel: true
         })
         continue
       }
 
-      // 開始 < 期限 → 全ての日に帯としてプッシュ
+      // 開始 < 期限 → 全ての日に帯としてプッシュ。
+      // タイトルは「開始日」と「月が変わった最初の日」だけに出して、
+      // 中間日は帯のみの表示にする (毎日タイトルが繰り返されるのを抑える)。
       const cur = new Date(start)
+      let prevMonth = -1
       while (cur.getTime() <= dueDay.getTime()) {
         const isStart = cur.getTime() === start.getTime()
         const isEnd = cur.getTime() === dueDay.getTime()
         const pos: SpanPosition = isStart ? 'start' : isEnd ? 'end' : 'middle'
+        const monthChanged = prevMonth !== -1 && cur.getMonth() !== prevMonth
+        const showLabel = isStart || monthChanged
         push(cur.toISOString(), {
           kind: 'personal',
           id: p.id,
           title: p.title,
           color: PERSONAL_TASK_COLOR,
           dueDate: p.dueDate,
-          badge: isStart ? '📋' : '',
-          spanPosition: pos
+          badge: showLabel ? '📋' : '',
+          spanPosition: pos,
+          showLabel
         })
+        prevMonth = cur.getMonth()
         cur.setDate(cur.getDate() + 1)
       }
     }
@@ -335,7 +347,7 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
                     : undefined
                 }
                 onDragEnd={draggable ? (): void => setDraggingPersonalId(null) : undefined}
-                className={`text-[10px] ${paddingClass} py-0.5 ${roundedClass} truncate transition-opacity ${
+                className={`text-[10px] ${paddingClass} py-0.5 ${roundedClass} truncate transition-opacity min-h-[14px] ${
                   clickable ? 'cursor-pointer hover:opacity-80' : ''
                 } ${draggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
                   draggingPersonalId === item.id ? 'opacity-40' : ''
@@ -356,7 +368,7 @@ export default function CalendarView({ tasks, spaces }: CalendarViewProps): JSX.
                     : item.title
                 }
               >
-                {item.badge} {item.title}
+                {item.showLabel ? `${item.badge} ${item.title}` : ''}
               </div>
             )
           })}
